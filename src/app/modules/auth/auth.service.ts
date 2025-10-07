@@ -14,7 +14,6 @@ import {
 import { User } from './auth.model';
 
 const createUser = async (user: IUser): Promise<Omit<IUser, 'password'>> => {
-
   const { profileImage } = user;
 
   // Validate that profileImage exists
@@ -32,9 +31,6 @@ const createUser = async (user: IUser): Promise<Omit<IUser, 'password'>> => {
     user.password,
     Number(config.bycrypt_salt_rounds),
   );
-
-
-
 
   // Create user with hashed password and FORCE role to be CUSTOMER
   const createdUser = await User.create({
@@ -156,7 +152,7 @@ const updateUser = async (
   if (!existingUser) {
     throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
   }
-  
+
   // If password is being updated, hash the new password
   if (payload.password) {
     payload.password = await bcrypt.hash(
@@ -165,20 +161,21 @@ const updateUser = async (
     );
   }
 
-  
-
   // Perform the update in the database
   const result = await User.findOneAndUpdate({ _id: id }, payload, {
     new: true,
   });
-  
+
   return result;
-}
+};
 
 //get all users
 const getAllUsers = async (): Promise<IUser[]> => {
-  //i want only representitive and admin
-  const users = await User.find({ role: { $in: [ENUM_USER_ROLE.REPRESENTATIVE, ENUM_USER_ROLE.ADMIN] } }).select('-password');
+  const users = await User.find({
+    role: { $in: [ENUM_USER_ROLE.REPRESENTATIVE] },
+  }).select('-password');
+
+  console.log('Retrieved Users:', users); // Debugging line
   return users;
 };
 

@@ -113,7 +113,9 @@ const updateUser = catchAsync(async (req: Request, res: Response) => {
 
 //get all users
 const getAllUsers = catchAsync(async (req: Request, res: Response) => {
+  console.log('Fetching all users'); // Debugging line
   const result = await AuthService.getAllUsers();
+  console.log('All Users:', result); // Debugging line
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

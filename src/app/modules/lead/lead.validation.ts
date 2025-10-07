@@ -3,19 +3,6 @@
 
 import { z } from "zod";
 
-// -----------------------------
-// Notes Schema
-// -----------------------------
-const noteSchema = z.object({
-  text: z.string().min(1, "Note text is required"),
-  addedBy: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid user ID"),
-  date: z.preprocess((val) => {
-    if (typeof val === "string" || typeof val === "number" || val instanceof Date) {
-      return new Date(val);
-    }
-    return undefined;
-  }, z.date()),
-});
 
 // -----------------------------
 // Lead Schema
@@ -37,7 +24,7 @@ const createLeadValidationSchema = z.object({
     .optional(),
   budget: z.number().optional(),
   attachment: z.array(z.string()).optional(),
-  notes: z.array(noteSchema).optional(),
+  notes: z.string().optional(),
   followUpDate: z
     .preprocess(
       (val) =>

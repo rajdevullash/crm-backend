@@ -10,7 +10,7 @@ import { ILead, ILeadFilters } from './lead.interface';
 import { Lead } from './lead.model';
 
 const createLead = async (payload: ILead): Promise<ILead | null> => {
-    const result = await Lead.create(payload);
+  const result = await Lead.create(payload);
   return result;
 };
 
@@ -21,8 +21,6 @@ const getAllLeads = async (
 ): Promise<IGenericResponse<ILead[]>> => {
   // Extract searchTerm to implement search query
   const { searchTerm, ...filtersData } = filters;
-
-
 
   const { page, limit, skip, sortBy, sortOrder } =
     paginationHelpers.calculatePagination(paginationOptions);
@@ -57,6 +55,10 @@ const getAllLeads = async (
     andConditions.length > 0 ? { $and: andConditions } : {};
 
   const result = await Lead.find(whereConditions)
+    .populate('stage')
+    .populate('assignedTo')
+    .populate('createdBy')
+    .populate('notes.addedBy')
     .sort(sortConditions)
     .skip(skip)
     .limit(limit);
@@ -77,9 +79,16 @@ const getAllLeads = async (
 
 //get specific lead
 const getSpecificLead = async (id: string): Promise<ILead | null> => {
-  const result = await Lead.findById(id);
+  const result = await Lead.findById(id)
+    .populate('stage')
+    .populate('assignedTo')
+    .populate('createdBy')
+    .populate('notes.addedBy');
+  if (!result) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'Lead not found');
+  }
   return result;
-}
+};
 
 const updateLead = async (
   id: string,
@@ -90,9 +99,6 @@ const updateLead = async (
   if (!existingLead) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Lead not found');
   }
-
-
-  
 
   // Perform the update in the database
   const result = await Lead.findOneAndUpdate({ _id: id }, payload, {
@@ -123,4 +129,3 @@ export const LeadService = {
   updateLead,
   deleteLead,
 };
-

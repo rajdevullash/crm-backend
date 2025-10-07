@@ -11,7 +11,7 @@ const leadSchema = new Schema<ILead>(
     email: { type: String, required: true },
     phone: { type: String, required: true },
     source: { type: String },
-    status: { type: String },
+    stage: { type: Schema.Types.ObjectId, ref: 'Stage' },
     assignedTo: { type: Schema.Types.ObjectId, ref: 'User' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     budget: { type: Number },
