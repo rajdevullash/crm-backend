@@ -8,10 +8,56 @@ import sendResponse from '../../../shared/sendResponse';
 import { ITask } from './task.interface';
 import { taskFilterableFields } from './task.constant';
 import { TaskService } from './task.service';
+import { emitTaskEvent } from '../socket/socketService';
 
 const createTask = catchAsync(async (req: Request, res: Response) => {
-  console.log(req.body);
+  console.log('taskControllerData', req.body);
+
+  const createdBy = req?.user?.userId;
+  req.body.createdBy = createdBy;
+  
   const result = await TaskService.createTask(req.body);
+
+ if(result){
+  console.log('New Task Created:', result);
+  // Prepare task data to send in the notification
+   const taskData = {
+    _id: result._id,
+    title: result.title,
+    description: result.description,
+    lead: result.lead,
+    assignTo: result.assignTo,
+    status: result.status,
+    dueDate: result.dueDate,
+    createdBy: result.createdBy,
+    performancePoint: result.performancePoint,
+    createdAt: result.createdAt,
+    updatedAt: result.updatedAt,
+  };
+
+  // Determine who should receive this notification
+  const targetRooms = [
+    `user_${createdBy}`, // The creator
+    `role_admin`, // All admins
+    `role_super_admin`
+  ];
+  
+  // If task is assigned to someone, add them to the recipients
+  if (result.assignTo && result.assignTo !== createdBy) {
+    targetRooms.push(`user_${result.assignTo}`);
+  }
+
+  emitTaskEvent('task:created', {
+    message: `New task "${result.title}" created`,
+    task: taskData,
+    user: {
+      id: req.user?.userId,
+      name: req.user?.name,
+      role: req.user?.role,
+    },
+    timestamp: new Date().toISOString(),
+  }, targetRooms);
+ }
 
   sendResponse<ITask>(res, {
     statusCode: httpStatus.CREATED,
@@ -26,9 +72,14 @@ const createTask = catchAsync(async (req: Request, res: Response) => {
 const getAllTasks = catchAsync(async (req: Request, res: Response) => {
   const filters = pick(req.query, taskFilterableFields);
   const paginationOptions = pick(req.query, paginationFields);
+
+  const role = req.user?.role;
+  const userId = req.user?.userId;
   const result = await TaskService.getAllTasks(
     filters,
     paginationOptions,
+    role,
+    userId
   );
 
   sendResponse<ITask[]>(res, {

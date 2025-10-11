@@ -5,9 +5,8 @@ import express, { Application, NextFunction, Request, Response } from 'express';
 import httpStatus from 'http-status';
 import globalErrorHandler from './app/middlewares/globalErrorHandler';
 import routes from './app/routes';
-
+import { Server as SocketIOServer } from 'socket.io';
 import cookieParser from 'cookie-parser';
-
 const app: Application = express();
 
 // Allow all origins
@@ -21,6 +20,7 @@ app.use(cookieParser());
 //parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
 
 app.use('/api/v1', routes);
 

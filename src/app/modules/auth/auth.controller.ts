@@ -5,12 +5,12 @@ import catchAsync from '../../../shared/catchAsync';
 import sendResponse from '../../../shared/sendResponse';
 // import { IUserLoginResponse } from './auth.interface';
 import { AuthService } from './auth.service';
+import { authFilterableFields } from './auth.constant';
+import { paginationFields } from '../../../constants/pagination';
+import pick from '../../../shared/pick';
 
 
 const createUser = catchAsync(async (req: Request, res: Response) => {
-  console.log('Request Body:', req.body);
-  console.log('File Info:', req.file);
-
   const profileImage = req.file ? `/uploads/profileImages/${req.file.filename}` : null;
 
   const data = {
@@ -91,8 +91,6 @@ const logoutUser = catchAsync(async (req: Request, res: Response) => {
 //update user
 const updateUser = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
-  console.log('Request Body:', req.body);
-  console.log('File Info:', req.file);
 
   const profileImage = req.file ? `/uploads/profileImages/${req.file.filename}` : undefined;
 
@@ -113,9 +111,12 @@ const updateUser = catchAsync(async (req: Request, res: Response) => {
 
 //get all users
 const getAllUsers = catchAsync(async (req: Request, res: Response) => {
-  console.log('Fetching all users'); // Debugging line
-  const result = await AuthService.getAllUsers();
-  console.log('All Users:', result); // Debugging line
+  const filters = pick(req.query, authFilterableFields);
+  const paginationOptions = pick(req.query, paginationFields);
+  const result = await AuthService.getAllUsers(
+    filters,
+    paginationOptions,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -136,12 +137,38 @@ const getSingleUser = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+//get profile
+const getProfile = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const result = await AuthService.getSingleUser(userId);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'User profile fetched successfully',
+    data: result,
+  });
+});
+
+//delete user
+const deleteUser = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await AuthService.deleteUser(id);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'User deleted successfully',
+    data: result,
+  });
+});
+
 export const AuthController = {
   createUser,
   loginUser,
   refreshToken,
   getAllUsers,
   getSingleUser,
+  getProfile,
   updateUser,
   logoutUser,
+  deleteUser,
 };

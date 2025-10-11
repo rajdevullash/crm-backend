@@ -39,3 +39,15 @@ export type ITokenPayload = {
   email: string;
   role: ENUM_USER_ROLE;
 };
+
+export type IAuthFilters = {
+  searchTerm?: string;
+  role?: ENUM_USER_ROLE;
+  email?: string;
+  name?: string;
+  phoneNumber?: string;
+  address?: string;
+  status?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+};

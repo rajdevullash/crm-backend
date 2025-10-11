@@ -10,7 +10,7 @@ const taskSchema = new Schema<ITask>(
     title: { type: String, required: true },
     description: { type: String, required: true },
     lead: { type: Schema.Types.ObjectId, ref: 'Lead', required: true },
-    assignTo: { type: [Schema.Types.ObjectId], ref: 'User', default: [] },
+    assignTo: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     status: { type: String, required: true },
     dueDate: { type: Date, required: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },

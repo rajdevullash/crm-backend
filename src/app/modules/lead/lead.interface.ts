@@ -19,6 +19,10 @@ export type ILead = {
   createdBy?: mongoose.Types.ObjectId;   
   budget?: number;
   attachment?: {
+    _doc: any;
+    id: any;
+    _id: any;
+    _id: any;
     url: string;               
     originalName: string;
     type: string; 

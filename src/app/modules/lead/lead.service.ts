@@ -18,6 +18,8 @@ const createLead = async (payload: ILead): Promise<ILead | null> => {
 const getAllLeads = async (
   filters: ILeadFilters,
   paginationOptions: IPaginationOptions,
+  userRole?: string,
+  userId?: string
 ): Promise<IGenericResponse<ILead[]>> => {
   // Extract searchTerm to implement search query
   const { searchTerm, ...filtersData } = filters;
@@ -26,6 +28,15 @@ const getAllLeads = async (
     paginationHelpers.calculatePagination(paginationOptions);
 
   const andConditions = [];
+  // Add role-based filtering
+  if (userRole === 'representative' && userId) {
+    andConditions.push({
+      $or: [
+        { assignedTo: userId },
+        { createdBy: userId }
+      ]
+    });
+  }
   // Search needs $or for searching in specified fields
   if (searchTerm) {
     andConditions.push({
@@ -62,8 +73,6 @@ const getAllLeads = async (
     .sort(sortConditions)
     .skip(skip)
     .limit(limit);
-
-  console.log(result);
 
   const total = await Lead.countDocuments(whereConditions);
 

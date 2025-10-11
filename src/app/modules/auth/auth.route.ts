@@ -10,7 +10,7 @@ const router = express.Router();
 
 router.get(
   '/get-all-users',
-  auth(ENUM_USER_ROLE.SUPER_ADMIN,),
+  auth(ENUM_USER_ROLE.SUPER_ADMIN,ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.REPRESENTATIVE),
   AuthController.getAllUsers
 )
 
@@ -20,10 +20,16 @@ router.get(
   AuthController.getSingleUser
 );
 
+router.get(
+  '/profile',
+  auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.REPRESENTATIVE),
+  AuthController.getProfile
+);
+
 router.patch(
   '/:id',
+  uploadProfileImage,
   auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN),
-  validateRequest(AuthValidation.updateUserZodSchema),
   AuthController.updateUser
 )
 
@@ -44,12 +50,12 @@ router.post('/refresh-token', AuthController.refreshToken);
 
 router.post('/logout', AuthController.logoutUser);
 
-router.patch(
+router.delete(
   '/:id',
-  uploadProfileImage,
   auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN),
-  validateRequest(AuthValidation.updateUserZodSchema),
-  AuthController.updateUser
-)
+  AuthController.deleteUser
+);
+
+
 
 export const AuthRoutes = router;

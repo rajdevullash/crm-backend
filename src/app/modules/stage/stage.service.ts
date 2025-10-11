@@ -105,17 +105,16 @@ const deleteStage = async (id: string): Promise<IStage | null> => {
     throw new ApiError(httpStatus.NOT_FOUND, 'Stage not found');
   }
 
-  // Before deleting the stage, check if any leads are associated with it
+  // Before deleting the stage, check if any leads are associated with it if associated leads exist delete it first do it with mongoose transaction
   const associatedLeads = await Lead.find({ stage: id });
+  //if associated leads exist delete them first
   if (associatedLeads.length > 0) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      'Cannot delete stage with associated leads. Please reassign or delete the leads first.',
-    );
+    await Lead.deleteMany({ stage: id });
   }
 
   const result = await Stage.findByIdAndDelete(id);
   return result;
+
 };
 
 //reorder stages

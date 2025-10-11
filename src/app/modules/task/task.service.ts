@@ -7,12 +7,13 @@ import { IGenericResponse } from '../../../interfaces/common';
 import { IPaginationOptions } from '../../../interfaces/pagination';
 import { ITask, ITaskFilters } from './task.interface';
 import { Task } from './task.model';
-import { taskFilterableFields } from './task.constant';
+import {  taskSearchableFields } from './task.constant';
 
 
 
 const createTask = async (payload: ITask): Promise<ITask | null> => {
-    const result = await Task.create(payload);
+  
+  const result = await Task.create(payload);
   return result;
 };
 
@@ -20,6 +21,8 @@ const createTask = async (payload: ITask): Promise<ITask | null> => {
 const getAllTasks = async (
   filters: ITaskFilters,
   paginationOptions: IPaginationOptions,
+  userRole?: string,
+  userId?: string
 ): Promise<IGenericResponse<ITask[]>> => {
   // Extract searchTerm to implement search query
   const { searchTerm, ...filtersData } = filters;
@@ -30,10 +33,20 @@ const getAllTasks = async (
     paginationHelpers.calculatePagination(paginationOptions);
 
   const andConditions = [];
+
+  // Add role-based filtering
+  if (userRole === 'representative' && userId) {
+    andConditions.push({
+      $or: [
+        { assignedTo: userId },
+        { createdBy: userId }
+      ]
+    });
+  }
   // Search needs $or for searching in specified fields
   if (searchTerm) {
     andConditions.push({
-      $or: taskFilterableFields.map(field => ({
+      $or: taskSearchableFields.map(field => ({
         [field]: {
           $regex: searchTerm,
           $options: 'i',

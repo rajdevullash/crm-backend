@@ -6,12 +6,17 @@ import { ENUM_USER_ROLE } from '../../../enums/user';
 import ApiError from '../../../errors/ApiError';
 import { jwtHelpers } from '../../../helpers/jwtHelpers';
 import {
+  IAuthFilters,
   ITokenPayload,
   IUser,
   IUserLogin,
   IUserLoginResponse,
 } from './auth.interface';
 import { User } from './auth.model';
+import { IPaginationOptions } from '../../../interfaces/pagination';
+import { paginationHelpers } from '../../../helpers/paginationHelper';
+import { authSearchableFields } from './auth.constant';
+import { SortOrder } from 'mongoose';
 
 const createUser = async (user: IUser): Promise<Omit<IUser, 'password'>> => {
   const { profileImage } = user;
@@ -58,7 +63,6 @@ const createUser = async (user: IUser): Promise<Omit<IUser, 'password'>> => {
 
 const loginUser = async (payload: IUserLogin): Promise<IUserLoginResponse> => {
   const { email, password } = payload;
-  console.log('service data', payload);
 
   const user = await User.findOne({ email: email }).select('+password');
   if (!user) {
@@ -155,6 +159,7 @@ const updateUser = async (
 
   // If password is being updated, hash the new password
   if (payload.password) {
+    //check if the
     payload.password = await bcrypt.hash(
       payload.password,
       Number(config.bycrypt_salt_rounds),
@@ -170,13 +175,74 @@ const updateUser = async (
 };
 
 //get all users
-const getAllUsers = async (): Promise<IUser[]> => {
-  const users = await User.find({
-    role: { $in: [ENUM_USER_ROLE.REPRESENTATIVE] },
-  }).select('-password');
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+interface IGetAllUsersResponse {
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+  };
+  data: IUser[];
+}
 
-  console.log('Retrieved Users:', users); // Debugging line
-  return users;
+const getAllUsers = async (
+  filters: IAuthFilters,
+  paginationOptions: IPaginationOptions,
+): Promise<IGetAllUsersResponse> => {
+  const { searchTerm, ...filtersData } = filters;
+
+  const { page, limit, skip, sortBy, sortOrder } =
+    paginationHelpers.calculatePagination(paginationOptions);
+
+  const andConditions = [];
+
+  // Search needs $or for searching in specified fields
+  if (searchTerm) {
+    andConditions.push({
+      $or: authSearchableFields.map(field => ({
+        [field]: {
+          $regex: searchTerm,
+          $options: 'i',
+        },
+      })),
+    });
+  }
+  // Filters needs $and to fullfill all the conditions
+  if (Object.keys(filtersData).length) {
+    andConditions.push({
+      $and: Object.entries(filtersData).map(([field, value]) => ({
+        [field]: value,
+      })),
+    });
+  }
+
+  // Dynamic  Sort needs  field to  do sorting
+  const sortConditions: { [key: string]: SortOrder } = {};
+  if (sortBy && sortOrder) {
+    sortConditions[sortBy] = sortOrder;
+  }
+  const whereConditions =
+    andConditions.length > 0 ? { $and: andConditions } : {};
+
+  const result = await User.find(whereConditions)
+      .where('role').equals(ENUM_USER_ROLE.REPRESENTATIVE)
+      .select('-password')
+      .sort(sortConditions)
+      .skip(skip)
+      .limit(limit);
+  
+    console.log(result);
+  
+    const total = await User.countDocuments(whereConditions);
+  
+    return {
+      meta: {
+        page,
+        limit,
+        total,
+      },
+      data: result,
+    };
 };
 
 //get single user
@@ -188,12 +254,33 @@ const getSingleUser = async (id: string): Promise<IUser | null> => {
   return user;
 };
 
+//delete user
+const deleteUser = async (id: string): Promise<IUser | null> => {
+  const user = await User.findByIdAndDelete(id).select('-password');
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
+  }
+  return user;
+};
+
+//get profile
+const getProfile = async (id: string): Promise<IUser | null> => {
+  const user = await User.findById(id).select('-password');
+  console.log('User Profile:', user);
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
+  }
+  return user;
+};
+
 export const AuthService = {
   createUser,
   loginUser,
   refreshAccessToken,
+  getProfile,
   getSingleUser,
   getAllUsers,
   logoutUser,
   updateUser,
+  deleteUser,
 };
