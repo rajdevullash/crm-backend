@@ -89,7 +89,7 @@ const deleteStage = catchAsync(async (req: Request, res: Response) => {
 
 const reorderStages = catchAsync(async (req: Request, res: Response) => {
   const { sourceIndex, destinationIndex } = req.body;
-  console.log('Reorder Request Body:', req.body); // Debugging line
+  console.log('Reorder Request Body:', req.body);
   const result = await StageService.reorderStages(sourceIndex, destinationIndex);
   sendResponse<IStage[]>(res, {
     statusCode: httpStatus.OK,

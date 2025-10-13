@@ -17,7 +17,9 @@ const userSchema = new Schema<IUser>(
     joinDate: { type: Date, default: Date.now },
     performancePoint: { type: Number, default: 0 },
     totalLeads: { type: Number, default: 0 },
-    convertedLeads: { type: Number, default: 0 },
+    convertedLeads: [
+      { type: Schema.Types.ObjectId, ref: 'Lead' }
+    ],
     tasksCompleted: { type: Number, default: 0 },
 
   },

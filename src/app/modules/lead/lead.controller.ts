@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Your controller code here
 
@@ -12,8 +13,9 @@ import { leadFilterableFields } from './lead.constant';
 import { ILead } from './lead.interface';
 import { LeadService } from './lead.service';
 import { Express } from 'express';
+import { emitTaskEvent } from '../socket/socketService';
+
 export const createLead = catchAsync(async (req: Request, res: Response) => {
-  console.log('Request Body:', req.body);
 
   // Uploaded files (from multer middleware)
   const files = req.files as Express.Multer.File[];
@@ -62,6 +64,49 @@ export const createLead = catchAsync(async (req: Request, res: Response) => {
 
   // ✅ Create lead
   const result = await LeadService.createLead(data);
+  // Emit socket event for lead creation
+  if (result) {
+    console.log('New Lead Created:', result);
+
+    // Prepare lead data to send in the notification
+    const leadData = {
+      _id: result._id,
+      name: result.name,
+      email: result.email,
+      phone: result.phone,
+      source: result.source,
+      createdBy: result.createdBy,
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt,
+    };
+
+    // Determine who should receive this notification
+    const targetRooms = [
+      `user_${requestedUser}`, // The creator
+      `role_admin`, // All admins
+      `role_super_admin`,
+    ];
+
+    // If lead is assigned to someone, add them to the recipients
+    if (result.assignedTo) {
+      targetRooms.push(`user_${result.assignedTo}`);
+    }
+
+    emitTaskEvent(
+      'lead:created',
+      {
+        message: `New lead "${result.name}" added`,
+        lead: leadData,
+        user: {
+          id: req.user?.userId,
+          name: req.user?.name,
+          role: req.user?.role,
+        },
+        timestamp: new Date().toISOString(),
+      },
+      targetRooms,
+    );
+  }
 
   sendResponse<ILead>(res, {
     statusCode: httpStatus.CREATED,
@@ -248,10 +293,104 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
     finalAttachments = existingLead.attachment || [];
   }
 
+  // Handle activities - Add new activity to existing activities
+  let formattedActivities: any[] = [];
+
+  formattedActivities = (existingLead.activities || []).map(
+    (activity: any) => ({
+      ...activity,
+      date:
+        activity.date instanceof Date ? activity.date : new Date(activity.date),
+    }),
+  );
+
+  // Add new activity
+  if (req.body.addActivity) {
+    try {
+      const newActivity = JSON.parse(req.body.addActivity);
+      newActivity.addedBy = requestedUser;
+      newActivity.date = new Date(newActivity.date);
+
+      formattedActivities.push(newActivity);
+      console.log('Added new activity:', newActivity);
+    } catch (error) {
+      console.error('Error parsing addActivity:', error);
+    }
+  }
+
+  // Update existing activity
+  if (req.body.updateActivity) {
+    console.log('Updating activity with data:', req.body.updateActivity);
+    try {
+      const updatedActivity = JSON.parse(req.body.updateActivity);
+      const activityIndex = formattedActivities.findIndex(activity => {
+        let activityId;
+        
+        if (activity._id) activityId = activity._id.toString();
+        else if (activity.id) activityId = activity.id.toString();
+        else if (activity._doc?._id) activityId = activity._doc._id.toString();
+        
+        return activityId === updatedActivity.id;
+      });
+
+      if (activityIndex !== -1) {
+        // Get the existing activity's _id
+        const existingId = formattedActivities[activityIndex]._doc?._id || 
+                          formattedActivities[activityIndex]._id;
+        
+        const existingAddedBy = formattedActivities[activityIndex]._doc?.addedBy || 
+                                formattedActivities[activityIndex].addedBy || 
+                                requestedUser;
+        
+        // Create clean activity object without the temporary 'id' field
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { id: _tempId, ...activityUpdateData } = updatedActivity;
+        
+        // Update the activity with new data
+        formattedActivities[activityIndex] = {
+          ...activityUpdateData,
+          _id: existingId,
+          addedBy: existingAddedBy,
+          date: new Date(updatedActivity.date),
+        };
+        console.log('Updated activity:', formattedActivities[activityIndex]);
+      } else {
+        console.log('Activity not found with ID:', updatedActivity.id);
+      }
+    } catch (error) {
+      console.error('Error parsing updateActivity:', error);
+    }
+  }
+
+  // Delete activity
+  if (req.body.deleteActivityId) {
+    const cleanDeleteActivityId = req.body.deleteActivityId.replace(
+      /^"|"$/g,
+      '',
+    );
+    console.log('Deleting activity with ID:', cleanDeleteActivityId);
+
+    formattedActivities = formattedActivities.filter(activity => {
+      let activityId;
+
+      if (activity._id) activityId = activity._id.toString();
+      else if (activity.id) activityId = activity.id.toString();
+      else if (activity._doc?._id) activityId = activity._doc._id.toString();
+
+      console.log('Checking activity ID:', activityId, 'against', cleanDeleteActivityId);
+      return activityId !== cleanDeleteActivityId;
+    });
+    
+    console.log('Activities after deletion:', formattedActivities.length);
+  }
+
+  console.log('Final activities to be saved:', formattedActivities);
+
   const data = {
     ...req.body,
     notes: formattedNotes,
     attachment: finalAttachments,
+    activities: formattedActivities,
   };
 
   const result = await LeadService.updateLead(id, data);
@@ -268,6 +407,8 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
 
 const deleteLead = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
+  
+  // Now delete the lead
   await LeadService.deleteLead(id);
   sendResponse(res, {
     statusCode: httpStatus.OK,

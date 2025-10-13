@@ -8,6 +8,7 @@ import { IPaginationOptions } from '../../../interfaces/pagination';
 import { ITask, ITaskFilters } from './task.interface';
 import { Task } from './task.model';
 import {  taskSearchableFields } from './task.constant';
+import { User } from '../auth/auth.model';
 
 
 
@@ -105,6 +106,16 @@ const updateTask = async (
   const existingTask = await Task.findOne({ _id: id });
   if (!existingTask) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Task not found');
+  }
+
+  //if task status is being updated to 'completed', if assignTo find then increment tasksCompleted otherwise if createdBy find then increment tasksCompleted
+  if (payload.status == 'completed') {
+    const task = await Task.findOne({ _id: id }).populate('assignTo').populate('createdBy');
+    if (task?.assignTo) {
+      await User.findByIdAndUpdate(task.assignTo._id, { $inc: { tasksCompleted: 1 } });
+    } else if (task?.createdBy) {
+      await User.findByIdAndUpdate(task.createdBy._id, { $inc: { tasksCompleted: 1 } });
+    }
   }
 
   // Perform the update in the database

@@ -24,11 +24,39 @@ const storage = multer.diskStorage({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const fileFilter = (req: any, file: any, cb: any) => {
   const allowedTypes = [
+    // Image types
     'image/jpeg',
     'image/png',
     'image/webp',
     'image/jpg',
+    
+    // PDF
     'application/pdf',
+    
+    // XSL/XML
+    'application/xsl+xml',
+    'text/xsl',
+    'application/xml',
+    'text/xml',
+    
+    // Word documents
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    
+    // Excel spreadsheets
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    
+    // OpenDocument formats (used by LibreOffice/OpenOffice)
+    'application/vnd.oasis.opendocument.text',
+    'application/vnd.oasis.opendocument.spreadsheet',
+    
+    // Plain text
+    'text/plain',
+    
+    // Rich Text Format
+    'application/rtf',
+    'text/rtf',
   ];
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);

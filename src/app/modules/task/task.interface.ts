@@ -1,11 +1,12 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 // Define your interfaces here
 import mongoose, { Model } from 'mongoose';
 
 export type ITask = {
-  _id: any;
-  updatedAt: any;
-  createdAt: any;
+  _id?: any;
+  updatedAt?: any;
+  createdAt?: any;
   title: string;
   description: string;
   lead: mongoose.Types.ObjectId;

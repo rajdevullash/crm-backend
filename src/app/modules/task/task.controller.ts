@@ -11,7 +11,6 @@ import { TaskService } from './task.service';
 import { emitTaskEvent } from '../socket/socketService';
 
 const createTask = catchAsync(async (req: Request, res: Response) => {
-  console.log('taskControllerData', req.body);
 
   const createdBy = req?.user?.userId;
   req.body.createdBy = createdBy;

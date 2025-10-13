@@ -10,7 +10,8 @@ export type IUser = {
   joinDate?: Date; // ISO date string (e.g. "2025-10-05T08:45:00.000Z")
   performancePoint?: number;
   totalLeads?: number;
-  convertedLeads?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  convertedLeads?: any[];
   tasksCompleted?: number;
 };
 

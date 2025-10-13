@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Define your interfaces here
 
 import mongoose, { Model } from 'mongoose';
@@ -22,7 +23,6 @@ export type ILead = {
     _doc: any;
     id: any;
     _id: any;
-    _id: any;
     url: string;               
     originalName: string;
     type: string; 
@@ -30,9 +30,19 @@ export type ILead = {
   }[] | null;        
   notes?: Note[];                                   
   followUpDate?: string | null;
+  activities?: any[];
+  _id?: any;
+  updatedAt?: any;
+  createdAt?: any;
 };
 export type LeadModel = Model<ILead, Record<string, unknown>>;
 
 export type ILeadFilters = {
   searchTerm?: string;
+  source?: string;
+  stage?: string;
+  assignedTo?: string;
+  createdBy?: string;
+  minBudget?: string;
+  maxBudget?: string;
 };
