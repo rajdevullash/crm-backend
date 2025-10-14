@@ -13,6 +13,14 @@ import { User } from '../auth/auth.model';
 
 
 const createTask = async (payload: ITask): Promise<ITask | null> => {
+  //if task status is being updated to 'completed', if assignTo find then increment tasksCompleted otherwise if createdBy find then increment tasksCompleted
+  if (payload.status == 'completed') {
+    if (payload.assignTo) {
+      await User.findByIdAndUpdate(payload.assignTo, { $inc: { tasksCompleted: 1 } });
+    } else if (payload.createdBy) {
+      await User.findByIdAndUpdate(payload.createdBy, { $inc: { tasksCompleted: 1 } });
+    }
+  }
   
   const result = await Task.create(payload);
   return result;
@@ -39,7 +47,7 @@ const getAllTasks = async (
   if (userRole === 'representative' && userId) {
     andConditions.push({
       $or: [
-        { assignedTo: userId },
+        { assignTo: userId },
         { createdBy: userId }
       ]
     });
@@ -76,8 +84,6 @@ const getAllTasks = async (
     .sort(sortConditions)
     .skip(skip)
     .limit(limit);
-
-  console.log(result);
 
   const total = await Task.countDocuments(whereConditions);
 

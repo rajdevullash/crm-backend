@@ -3,6 +3,7 @@ import { AuthRoutes } from '../modules/auth/auth.route';
 import { TaskRoutes } from '../modules/task/task.route';
 import { LeadRoutes } from '../modules/lead/lead.route';
 import { StageRoutes } from '../modules/stage/stage.route';
+import { DashboardRoutes } from '../modules/dashboard/dashboard.route';
 
 const router = express.Router();
 
@@ -22,6 +23,10 @@ const moduleRoutes = [
   {
     path: '/stages',
     route: StageRoutes,
+  },
+  {
+    path: '/dashboard',
+    route: DashboardRoutes,
   }
 ];
 
