@@ -79,3 +79,13 @@ export const emitDashboardEvent = (event: string, data: any, targetRooms?: strin
     socketIO.emit(event, data);
   }
 };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const emitNotificationEvent = (event: string, data: any, targetRooms?: string[]) => {
+  const socketIO = getIO();
+  if (targetRooms?.length) {
+    targetRooms.forEach((room) => socketIO.to(room).emit(event, data));
+  } else {
+    socketIO.emit(event, data);
+  }
+};

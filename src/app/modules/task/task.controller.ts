@@ -9,6 +9,9 @@ import { ITask } from './task.interface';
 import { taskFilterableFields } from './task.constant';
 import { TaskService } from './task.service';
 import { emitTaskEvent } from '../socket/socketService';
+import { createTaskNotification } from '../../../app/helpers/notificationHelper';
+import { sendTaskAssignmentEmail } from '../../../shared/emailService';
+import { User } from '../auth/auth.model';
 
 const createTask = catchAsync(async (req: Request, res: Response) => {
 
@@ -20,6 +23,7 @@ const createTask = catchAsync(async (req: Request, res: Response) => {
  if(result){
   console.log('New Task Created:', result);
   // Prepare task data to send in the notification
+
    const taskData = {
     _id: result._id,
     title: result.title,
@@ -56,6 +60,37 @@ const createTask = catchAsync(async (req: Request, res: Response) => {
     },
     timestamp: new Date().toISOString(),
   }, targetRooms);
+
+  // Create notification (this will emit socket event 'notification:new' automatically)
+  await createTaskNotification({
+    _id: result._id.toString(),
+    title: result.title,
+    assignTo: result.assignTo?.toString(),
+    createdBy: createdBy,
+  });
+
+  // Send email to assigned user if task is assigned to someone
+  if (result.assignTo && result.assignTo !== createdBy) {
+    try {
+      const assignedUser = await User.findById(result.assignTo).select('name email');
+      const creator = await User.findById(createdBy).select('name');
+      
+      if (assignedUser && creator) {
+        await sendTaskAssignmentEmail({
+          assignedToEmail: assignedUser.email,
+          assignedToName: assignedUser.name,
+          assignedByName: creator.name,
+          taskTitle: result.title,
+          description: result.description,
+          dueDate: result.dueDate,
+          priority: result.priority,
+        });
+      }
+    } catch (error) {
+      console.error('Error sending task assignment email:', error);
+      // Continue execution even if email fails
+    }
+  }
  }
 
   sendResponse<ITask>(res, {
@@ -118,6 +153,34 @@ const updateTask = catchAsync(async (req: Request, res: Response) => {
   }
 
   const result = await TaskService.updateTask(id, req.body);
+
+  // Check if task assignment changed and send email to newly assigned user
+  const oldAssignTo = existingTask?.assignTo?.toString();
+  const newAssignTo = result?.assignTo?.toString();
+  const updatedBy = req.user?.userId;
+
+  if (result && newAssignTo && oldAssignTo !== newAssignTo) {
+    try {
+      const assignedUser = await User.findById(newAssignTo).select('name email');
+      const updater = await User.findById(updatedBy).select('name');
+      
+      if (assignedUser && updater) {
+        await sendTaskAssignmentEmail({
+          assignedToEmail: assignedUser.email,
+          assignedToName: assignedUser.name,
+          assignedByName: updater.name,
+          taskTitle: result.title,
+          description: result.description,
+          dueDate: result.dueDate,
+          priority: result.priority,
+        });
+      }
+    } catch (error) {
+      console.error('Error sending task assignment email:', error);
+      // Continue execution even if email fails
+    }
+  }
+
   sendResponse<ITask>(res, {
     statusCode: httpStatus.OK,
     success: true,

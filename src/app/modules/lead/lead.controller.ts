@@ -14,8 +14,11 @@ import { ILead } from './lead.interface';
 import { LeadService } from './lead.service';
 import { Express } from 'express';
 import { emitTaskEvent } from '../socket/socketService';
+import { createLeadNotification } from '../../../app/helpers/notificationHelper';
+import { sendLeadAssignmentEmail } from '../../../shared/emailService';
+import { User } from '../auth/auth.model';
 
-export const createLead = catchAsync(async (req: Request, res: Response) => {
+const createLead = catchAsync(async (req: Request, res: Response) => {
 
   // Uploaded files (from multer middleware)
   const files = req.files as Express.Multer.File[];
@@ -106,6 +109,40 @@ export const createLead = catchAsync(async (req: Request, res: Response) => {
       },
       targetRooms,
     );
+
+    // Create notification (this will emit socket event 'notification:new' automatically)
+    await createLeadNotification({
+      _id: result._id.toString(),
+      title: result.title,
+      name: result.name,
+      assignedTo: result.assignedTo?.toString(),
+      createdBy: requestedUser,
+    });
+
+    // Send email to assigned user if lead is assigned to someone
+    if (result.assignedTo && result.assignedTo.toString() !== requestedUser) {
+      try {
+        const assignedUser = await User.findById(result.assignedTo).select('name email');
+        const creator = await User.findById(requestedUser).select('name');
+        
+        if (assignedUser && creator) {
+          await sendLeadAssignmentEmail({
+            assignedToEmail: assignedUser.email,
+            assignedToName: assignedUser.name,
+            assignedByName: creator.name,
+            leadTitle: result.title,
+            leadName: result.name,
+            email: result.email,
+            phone: result.phone,
+            source: result.source,
+            budget: result.budget,
+          });
+        }
+      } catch (error) {
+        console.error('Error sending lead assignment email:', error);
+        // Continue execution even if email fails
+      }
+    }
   }
 
   sendResponse<ILead>(res, {
@@ -394,6 +431,34 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
   };
 
   const result = await LeadService.updateLead(id, data);
+
+  // Check if lead assignment changed and send email to newly assigned user
+  const oldAssignedTo = existingLead?.assignedTo?.toString();
+  const newAssignedTo = result?.assignedTo?.toString();
+
+  if (result && newAssignedTo && oldAssignedTo !== newAssignedTo) {
+    try {
+      const assignedUser = await User.findById(newAssignedTo).select('name email');
+      const updater = await User.findById(requestedUser).select('name');
+      
+      if (assignedUser && updater) {
+        await sendLeadAssignmentEmail({
+          assignedToEmail: assignedUser.email,
+          assignedToName: assignedUser.name,
+          assignedByName: updater.name,
+          leadTitle: result.title,
+          leadName: result.name,
+          email: result.email,
+          phone: result.phone,
+          source: result.source,
+          budget: result.budget,
+        });
+      }
+    } catch (error) {
+      console.error('Error sending lead assignment email:', error);
+      // Continue execution even if email fails
+    }
+  }
 
   sendResponse<ILead>(res, {
     statusCode: httpStatus.OK,
