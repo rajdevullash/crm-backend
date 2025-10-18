@@ -1,8 +1,122 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable no-unused-vars */
 import { User } from "../auth/auth.model";
 import { Lead } from "../lead/lead.model";
 import { Stage } from "../stage/stage.model";
+import { Task } from "../task/task.model";
+import mongoose from "mongoose";
 
-const getLeaderboard = async () => {
+// Get representative's task data for the past year (monthly basis)
+const getRepresentativeTaskData = async (userId: string) => {
+  // Calculate date range (last 12 months from current date)
+  const currentDate = new Date();
+  const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 11, 1);
+  const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  const taskData = await Task.aggregate([
+    // Match tasks assigned to the specific user within date range
+    {
+      $match: {
+        assignTo: new mongoose.Types.ObjectId(userId),
+        createdAt: { $gte: startDate, $lte: endDate },
+      },
+    },
+    
+    // Add month and year fields
+    {
+      $addFields: {
+        month: { $month: "$createdAt" },
+        year: { $year: "$createdAt" },
+      },
+    },
+    
+    // Group by year and month
+    {
+      $group: {
+        _id: {
+          year: "$year",
+          month: "$month",
+        },
+        totalTasks: { $sum: 1 },
+        pending: {
+          $sum: {
+            $cond: [{ $eq: ["$status", "pending"] }, 1, 0],
+          },
+        },
+        completed: {
+          $sum: {
+            $cond: [{ $eq: ["$status", "completed"] }, 1, 0],
+          },
+        },
+        cancelled: {
+          $sum: {
+            $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0],
+          },
+        },
+      },
+    },
+    
+    // Sort by year and month ascending (oldest to newest)
+    {
+      $sort: {
+        "_id.year": 1,
+        "_id.month": 1,
+      },
+    },
+    
+    // Project final fields
+    {
+      $project: {
+        _id: 0,
+        year: "$_id.year",
+        month: "$_id.month",
+        monthName: {
+          $switch: {
+            branches: [
+              { case: { $eq: ["$_id.month", 1] }, then: "January" },
+              { case: { $eq: ["$_id.month", 2] }, then: "February" },
+              { case: { $eq: ["$_id.month", 3] }, then: "March" },
+              { case: { $eq: ["$_id.month", 4] }, then: "April" },
+              { case: { $eq: ["$_id.month", 5] }, then: "May" },
+              { case: { $eq: ["$_id.month", 6] }, then: "June" },
+              { case: { $eq: ["$_id.month", 7] }, then: "July" },
+              { case: { $eq: ["$_id.month", 8] }, then: "August" },
+              { case: { $eq: ["$_id.month", 9] }, then: "September" },
+              { case: { $eq: ["$_id.month", 10] }, then: "October" },
+              { case: { $eq: ["$_id.month", 11] }, then: "November" },
+              { case: { $eq: ["$_id.month", 12] }, then: "December" },
+            ],
+            default: "Unknown",
+          },
+        },
+        totalTasks: 1,
+        pending: 1,
+        completed: 1,
+        cancelled: 1,
+      },
+    },
+  ]);
+
+  // Calculate summary
+  const summary = {
+    totalTasks: taskData.reduce((sum, month) => sum + month.totalTasks, 0),
+    totalPending: taskData.reduce((sum, month) => sum + month.pending, 0),
+    totalCompleted: taskData.reduce((sum, month) => sum + month.completed, 0),
+    totalCancelled: taskData.reduce((sum, month) => sum + month.cancelled, 0),
+  };
+
+  return {
+    type: 'representative_tasks',
+    summary,
+    monthlyData: taskData,
+    dateRange: {
+      startDate,
+      endDate,
+    },
+  };
+};
+
+const getLeaderboard = async (userId?: string, userRole?: string) => {
   const leaderboard = await User.aggregate([
     // Only include active users (optional - remove if you want all users)
     {
@@ -174,7 +288,11 @@ const getLeaderboard = async () => {
 };
 
 // Revenue Overview with Monthly/Yearly Filters
-const getRevenueOverview = async (year?: number, month?: number) => {
+const getRevenueOverview = async (year?: number, month?: number, userId?: string, userRole?: string) => {
+
+  if (userRole === 'representative' && userId) {
+    return getRepresentativeTaskData(userId);
+  }
   // Get the last stage (converted stage) - assuming last position is converted
   const lastStage = await Stage.findOne().sort({ position: -1 });
   

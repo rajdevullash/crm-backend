@@ -6,36 +6,50 @@ import { DashboardService } from './dashboard.service';
 import { emitDashboardEvent } from '../socket/socketService';
 
 const getLeaderboard = catchAsync(async (req: Request, res: Response) => {
-  const result = await DashboardService.getLeaderboard();
+  // Get user info from authenticated request
+  const userId = req.user?.userId;
+  const userRole = req.user?.role;
+
+  const result = await DashboardService.getLeaderboard(userId, userRole);
 
   // Emit socket event to notify all connected clients about leaderboard update
   if (result) {
-    console.log('📊 Leaderboard fetched, emitting socket event');
+    console.log('📊 Leaderboard/Task data fetched, emitting socket event');
     
-    // Target rooms for leaderboard updates (admins and super_admins typically view this)
-    const targetRooms = [
-      'role_admin',
-      'role_super_admin',
-      'role_representative', // Representatives might want to see their ranking
-    ];
+    // Target rooms based on user role
+    const targetRooms = 
+      userRole === 'representative' 
+        ? ['role_representative']
+        : ['role_admin', 'role_super_admin', 'role_representative'];
 
-    emitDashboardEvent('leaderboard:updated', {
-      message: 'Leaderboard data updated',
-      leaderboard: result,
+    const eventType = userRole === 'representative' ? 'tasks:updated' : 'leaderboard:updated';
+    
+    emitDashboardEvent(eventType, {
+      message: userRole === 'representative' 
+        ? 'Task data updated' 
+        : 'Leaderboard data updated',
+      data: result,
       timestamp: new Date().toISOString(),
     }, targetRooms);
   }
 
+  const message = userRole === 'representative' 
+    ? 'Task data retrieved successfully' 
+    : 'Leaderboard retrieved successfully';
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: 'Leaderboard retrieved successfully',
+    message,
     data: result,
   });
 });
 
 const getRevenueOverview = catchAsync(async (req: Request, res: Response) => {
   const { year, month } = req.query;
+
+  const userId = req.user?.userId;
+  const userRole = req.user?.role;
 
   // Parse year and month from query params
   const yearNum = year ? parseInt(year as string, 10) : undefined;
@@ -51,7 +65,7 @@ const getRevenueOverview = catchAsync(async (req: Request, res: Response) => {
     });
   }
 
-  const result = await DashboardService.getRevenueOverview(yearNum, monthNum);
+  const result = await DashboardService.getRevenueOverview(yearNum, monthNum, userId, userRole);
 
   // Emit socket event for revenue overview updates
   if (result) {
@@ -62,12 +76,18 @@ const getRevenueOverview = catchAsync(async (req: Request, res: Response) => {
       'role_super_admin',
     ];
 
-    emitDashboardEvent('revenue:updated', {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload: Record<string, any> = {
       message: 'Revenue overview data updated',
       summary: result.summary,
-      filter: result.filter,
       timestamp: new Date().toISOString(),
-    }, targetRooms);
+    };
+
+    if ('filter' in result && result.filter !== undefined) {
+      payload.filter = result.filter;
+    }
+
+    emitDashboardEvent('revenue:updated', payload, targetRooms);
   }
 
   sendResponse(res, {

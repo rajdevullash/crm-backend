@@ -16,7 +16,6 @@ import { User } from './auth.model';
 import { IPaginationOptions } from '../../../interfaces/pagination';
 import { paginationHelpers } from '../../../helpers/paginationHelper';
 import { authSearchableFields } from './auth.constant';
-import { SortOrder } from 'mongoose';
 
 const createUser = async (user: IUser): Promise<Omit<IUser, 'password'>> => {
   const { profileImage } = user;
@@ -196,6 +195,11 @@ const getAllUsers = async (
 
   const andConditions = [];
 
+  // Add role filter for representatives
+  andConditions.push({
+    role: ENUM_USER_ROLE.REPRESENTATIVE,
+  });
+
   // Search needs $or for searching in specified fields
   if (searchTerm) {
     andConditions.push({
@@ -216,33 +220,98 @@ const getAllUsers = async (
     });
   }
 
-  // Dynamic  Sort needs  field to  do sorting
-  const sortConditions: { [key: string]: SortOrder } = {};
+  // Dynamic Sort needs field to do sorting
+  const sortConditions: { [key: string]: 1 | -1 } = {};
   if (sortBy && sortOrder) {
-    sortConditions[sortBy] = sortOrder;
+    sortConditions[sortBy] = sortOrder === 'asc' ? 1 : -1;
   }
   const whereConditions =
     andConditions.length > 0 ? { $and: andConditions } : {};
 
-  const result = await User.find(whereConditions)
-      .where('role').equals(ENUM_USER_ROLE.REPRESENTATIVE)
-      .select('-password')
-      .sort(sortConditions)
-      .skip(skip)
-      .limit(limit);
-  
-    console.log(result);
-  
-    const total = await User.countDocuments(whereConditions);
-  
-    return {
-      meta: {
-        page,
-        limit,
-        total,
+  // Use aggregation to include task statistics
+  const result = await User.aggregate([
+    // Match users based on filters
+    {
+      $match: whereConditions,
+    },
+    
+    // Lookup tasks assigned to each user
+    {
+      $lookup: {
+        from: 'tasks',
+        localField: '_id',
+        foreignField: 'assignTo',
+        as: 'tasks',
       },
-      data: result,
-    };
+    },
+    
+    // Add task statistics
+    {
+      $addFields: {
+        completedTasks: {
+          $size: {
+            $filter: {
+              input: '$tasks',
+              as: 'task',
+              cond: { $eq: ['$$task.status', 'completed'] },
+            },
+          },
+        },
+        pendingTasks: {
+          $size: {
+            $filter: {
+              input: '$tasks',
+              as: 'task',
+              cond: { $eq: ['$$task.status', 'pending'] },
+            },
+          },
+        },
+        cancelledTasks: {
+          $size: {
+            $filter: {
+              input: '$tasks',
+              as: 'task',
+              cond: { $eq: ['$$task.status', 'cancelled'] },
+            },
+          },
+        },
+        totalTasks: { $size: '$tasks' },
+      },
+    },
+    
+    // Remove password and tasks array from output
+    {
+      $project: {
+        password: 0,
+        tasks: 0,
+      },
+    },
+    
+    // Apply sorting
+    ...(Object.keys(sortConditions).length > 0 ? [{ $sort: sortConditions }] : []),
+    
+    // Get total count before pagination
+    {
+      $facet: {
+        metadata: [{ $count: 'total' }],
+        data: [{ $skip: skip }, { $limit: limit }],
+      },
+    },
+  ]);
+
+  const total = result[0]?.metadata[0]?.total || 0;
+  const data = result[0]?.data || [];
+
+  console.log(data);
+
+  return {
+    meta: {
+      page,
+      limit,
+      total,
+    },
+    data: data,
+  };
 };
 
 //get single user
