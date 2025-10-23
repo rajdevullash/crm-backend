@@ -8,8 +8,8 @@ const leadSchema = new Schema<ILead>(
   {
     title: { type: String, required: true },
     name: { type: String, required: true },
-    email: { type: String, required: true },
-    phone: { type: String, required: true },
+    email: { type: String },
+    phone: { type: String },
     source: { type: String },
     stage: { type: Schema.Types.ObjectId, ref: 'Stage' },
     assignedTo: { type: Schema.Types.ObjectId, ref: 'User' },

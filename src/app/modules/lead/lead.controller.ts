@@ -63,6 +63,14 @@ const createLead = catchAsync(async (req: Request, res: Response) => {
     attachment: attachments,
     createdBy: requestedUser,
     notes: formattedNotes,
+    // ✅ Convert empty strings to undefined so service can handle defaults properly
+    stage: req.body.stage === '' || !req.body.stage ? undefined : req.body.stage,
+    assignedTo: req.body.assignedTo === '' || !req.body.assignedTo ? undefined : req.body.assignedTo,
+    email: req.body.email === '' ? undefined : req.body.email,
+    phone: req.body.phone === '' ? undefined : req.body.phone,
+    source: req.body.source === '' ? undefined : req.body.source,
+    budget: req.body.budget === '' ? undefined : req.body.budget,
+    followUpDate: req.body.followUpDate === '' ? undefined : req.body.followUpDate,
   };
 
   // ✅ Create lead

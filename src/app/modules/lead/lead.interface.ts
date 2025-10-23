@@ -12,10 +12,10 @@ export type Note = {
 export type ILead = {
   title: string;                  
   name: string;                    
-  email: string;
-  phone: string;
+  email?: string;
+  phone?: string;
   source?: string;                 
-  stage: mongoose.Types.ObjectId;              
+  stage?: mongoose.Types.ObjectId;              
   assignedTo?: mongoose.Types.ObjectId;        
   createdBy?: mongoose.Types.ObjectId;   
   budget?: number;

@@ -27,6 +27,17 @@ const createLead = async (payload: ILead): Promise<ILead | null> => {
       throw new ApiError(httpStatus.BAD_REQUEST, 'createdBy is required');
     }
 
+    // ✅ If stage is not provided or is null/empty, set the first stage as default
+    if (!payload.stage || payload.stage.toString() === '') {
+      const firstStage = await Stage.findOne({ isActive: true }).sort({ position: 1 }).session(session);
+      if (firstStage) {
+        payload.stage = firstStage._id;
+        console.log(`No stage provided. Setting default stage: ${firstStage.title} (${firstStage._id})`);
+      } else {
+        throw new ApiError(httpStatus.NOT_FOUND, 'No active stage found. Please create a stage first.');
+      }
+    }
+
     // Update user's totalLeads count within transaction
     const user = await User.findOneAndUpdate(
       { _id: userId },
