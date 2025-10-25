@@ -49,8 +49,22 @@ const createLead = async (payload: ILead): Promise<ILead | null> => {
       throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
     }
 
+    // Add initial history entry for lead creation
+    const initialHistory = {
+      action: 'created',
+      changedBy: userId,
+      timestamp: new Date(),
+      description: 'Lead was created'
+    };
+
+    // Add history to payload
+    const leadDataWithHistory = {
+      ...payload,
+      history: [initialHistory]
+    };
+
     // Create lead within transaction (create with array returns array)
-    const result = await Lead.create([payload], { session });
+    const result = await Lead.create([leadDataWithHistory], { session });
 
     // Commit transaction if everything succeeds
     await session.commitTransaction();
@@ -125,7 +139,8 @@ const getAllLeads = async (
   if (sortBy && sortOrder) {
     sortConditions[sortBy] = sortOrder;
   } else {
-    // Default sort by creation date (newest first)
+    // Default sort by order within stage, then by creation date (newest first)
+    sortConditions['order'] = 1;
     sortConditions['createdAt'] = -1;
   }
   
@@ -160,7 +175,9 @@ const getSpecificLead = async (id: string): Promise<ILead | null> => {
     .populate('stage')
     .populate('assignedTo')
     .populate('createdBy')
-    .populate('notes.addedBy');
+    .populate('notes.addedBy')
+    .populate('activities.addedBy')
+    .populate('history.changedBy');
   if (!result) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Lead not found');
   }
@@ -170,12 +187,19 @@ const getSpecificLead = async (id: string): Promise<ILead | null> => {
 const updateLead = async (
   id: string,
   payload: Partial<ILead>,
+  userId?: string
 ): Promise<ILead | null> => {
   console.log('id', id);
-  const existingLead = await Lead.findOne({ _id: id }).populate('stage');
+  const existingLead = await Lead.findOne({ _id: id })
+    .populate('stage')
+    .populate('assignedTo');
   if (!existingLead) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Lead not found');
   }
+
+  // Prepare history entries
+  const historyEntries: any[] = [];
+  const currentUserId = userId || existingLead.createdBy;
 
   // Check if stage is being updated
   if (payload.stage && payload.stage.toString() !== existingLead.stage?._id?.toString()) {
@@ -184,6 +208,18 @@ const updateLead = async (
     if (!newStage) {
       throw new ApiError(httpStatus.NOT_FOUND, 'Stage not found');
     }
+
+    // Add history entry for stage change
+    const oldStageTitle = (existingLead.stage as any)?.title || 'No stage';
+    historyEntries.push({
+      action: 'stage_changed',
+      field: 'stage',
+      oldValue: oldStageTitle,
+      newValue: newStage.title,
+      changedBy: currentUserId,
+      timestamp: new Date(),
+      description: `Stage changed from "${oldStageTitle}" to "${newStage.title}"`
+    });
 
     // Find the last stage (highest position)
     const lastStage = await Stage.findOne().sort({ position: -1 });
@@ -262,10 +298,177 @@ const updateLead = async (
     }
   }
 
+  // Check if assignedTo is being updated
+  if (payload.assignedTo && payload.assignedTo.toString() !== existingLead.assignedTo?._id?.toString()) {
+    const newAssignee = await User.findById(payload.assignedTo);
+    const oldAssigneeName = (existingLead.assignedTo as any)?.name || 'Unassigned';
+    const newAssigneeName = newAssignee?.name || 'Unassigned';
+    
+    historyEntries.push({
+      action: 'assigned',
+      field: 'assignedTo',
+      oldValue: oldAssigneeName,
+      newValue: newAssigneeName,
+      changedBy: currentUserId,
+      timestamp: new Date(),
+      description: `Lead reassigned from "${oldAssigneeName}" to "${newAssigneeName}"`
+    });
+  }
+
+  // Track general field updates (title, name, email, phone, source, budget, currency)
+  const fieldsToTrack = [
+    { key: 'title' as keyof ILead, label: 'Title' },
+    { key: 'name' as keyof ILead, label: 'Name' },
+    { key: 'email' as keyof ILead, label: 'Email' },
+    { key: 'phone' as keyof ILead, label: 'Phone' },
+    { key: 'source' as keyof ILead, label: 'Source' },
+    { key: 'budget' as keyof ILead, label: 'Budget' },
+    { key: 'currency' as keyof ILead, label: 'Currency' },
+  ];
+
+  for (const field of fieldsToTrack) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payloadValue = (payload as any)[field.key];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const existingValue = (existingLead as any)[field.key];
+    
+    if (payloadValue !== undefined) {
+      // Convert both values to strings for comparison to handle type differences
+      const oldValueStr = existingValue?.toString() || '';
+      const newValueStr = payloadValue?.toString() || '';
+      
+      // Only add to history if values are actually different
+      if (oldValueStr !== newValueStr) {
+        const oldDisplay = oldValueStr || 'Not set';
+        const newDisplay = newValueStr || 'Not set';
+        
+        historyEntries.push({
+          action: 'updated',
+          field: field.key,
+          oldValue: oldDisplay,
+          newValue: newDisplay,
+          changedBy: currentUserId,
+          timestamp: new Date(),
+          description: `${field.label} changed from "${oldDisplay}" to "${newDisplay}"`
+        });
+      }
+    }
+  }
+
+  // Check if notes are being added
+  if (payload.notes && Array.isArray(payload.notes)) {
+    const existingNotesCount = existingLead.notes?.length || 0;
+    const newNotesCount = payload.notes.length;
+    
+    if (newNotesCount > existingNotesCount) {
+      // New note was added
+      const addedNotesCount = newNotesCount - existingNotesCount;
+      historyEntries.push({
+        action: 'note_added',
+        field: 'notes',
+        changedBy: currentUserId,
+        timestamp: new Date(),
+        description: addedNotesCount === 1 ? 'Added a new note' : `Added ${addedNotesCount} new notes`
+      });
+    } else if (newNotesCount < existingNotesCount) {
+      // Note was deleted
+      const deletedNotesCount = existingNotesCount - newNotesCount;
+      historyEntries.push({
+        action: 'note_deleted',
+        field: 'notes',
+        changedBy: currentUserId,
+        timestamp: new Date(),
+        description: deletedNotesCount === 1 ? 'Deleted a note' : `Deleted ${deletedNotesCount} notes`
+      });
+    }
+  }
+
+  // Check if activities are being added
+  if (payload.activities && Array.isArray(payload.activities)) {
+    const existingActivitiesCount = existingLead.activities?.length || 0;
+    const newActivitiesCount = payload.activities.length;
+    
+    if (newActivitiesCount > existingActivitiesCount) {
+      // New activity was added
+      const newActivity = payload.activities[payload.activities.length - 1];
+      const activityType = newActivity.type || 'activity';
+      historyEntries.push({
+        action: 'activity_added',
+        field: 'activities',
+        newValue: activityType,
+        changedBy: currentUserId,
+        timestamp: new Date(),
+        description: `Added a new ${activityType} activity`
+      });
+    } else if (newActivitiesCount < existingActivitiesCount) {
+      // Activity was deleted
+      historyEntries.push({
+        action: 'activity_deleted',
+        field: 'activities',
+        changedBy: currentUserId,
+        timestamp: new Date(),
+        description: 'Deleted an activity'
+      });
+    }
+  }
+
+  // Check if attachments are being added or removed
+  if (payload.attachment !== undefined && payload.attachment !== null) {
+    const existingAttachmentsCount = existingLead.attachment?.length || 0;
+    const newAttachmentsCount = Array.isArray(payload.attachment) ? payload.attachment.length : 0;
+    
+    if (newAttachmentsCount > existingAttachmentsCount) {
+      // New attachment was added
+      const addedCount = newAttachmentsCount - existingAttachmentsCount;
+      const newAttachment = Array.isArray(payload.attachment) && payload.attachment.length > 0 
+        ? payload.attachment[payload.attachment.length - 1] 
+        : null;
+      const fileName = newAttachment?.originalName || 'file';
+      historyEntries.push({
+        action: 'attachment_added',
+        field: 'attachment',
+        newValue: fileName,
+        changedBy: currentUserId,
+        timestamp: new Date(),
+        description: addedCount === 1 ? `Uploaded attachment: ${fileName}` : `Uploaded ${addedCount} attachments`
+      });
+    } else if (newAttachmentsCount < existingAttachmentsCount) {
+      // Attachment was deleted
+      const deletedCount = existingAttachmentsCount - newAttachmentsCount;
+      historyEntries.push({
+        action: 'attachment_deleted',
+        field: 'attachment',
+        changedBy: currentUserId,
+        timestamp: new Date(),
+        description: deletedCount === 1 ? 'Deleted an attachment' : `Deleted ${deletedCount} attachments`
+      });
+    }
+  }
+
   // Perform the update in the database
-  const result = await Lead.findOneAndUpdate({ _id: id }, payload, {
-    new: true,
-  });
+  let result;
+  if (historyEntries.length > 0) {
+    // Use $push operator to add history entries
+    result = await Lead.findOneAndUpdate(
+      { _id: id }, 
+      {
+        ...payload,
+        $push: { history: { $each: historyEntries } }
+      } as any,
+      { new: true }
+    )
+      .populate('stage')
+      .populate('assignedTo')
+      .populate('createdBy')
+      .populate('history.changedBy');
+  } else {
+    // Regular update without history
+    result = await Lead.findOneAndUpdate({ _id: id }, payload, { new: true })
+      .populate('stage')
+      .populate('assignedTo')
+      .populate('createdBy')
+      .populate('history.changedBy');
+  }
 
   return result;
 };
@@ -356,10 +559,90 @@ const deleteLead = async (id: string): Promise<ILead | null> => {
   }
 };
 
+const reorderLeads = async (leadOrders: { leadId: string; order: number }[]): Promise<void> => {
+  const session = await mongoose.startSession();
+  
+  try {
+    session.startTransaction();
+
+    // Update each lead's order
+    const updatePromises = leadOrders.map(({ leadId, order }) =>
+      Lead.findByIdAndUpdate(
+        leadId,
+        { order },
+        { new: true, session }
+      )
+    );
+
+    await Promise.all(updatePromises);
+
+    await session.commitTransaction();
+    console.log('✅ Lead reordering completed successfully');
+  } catch (error) {
+    await session.abortTransaction();
+    console.error('❌ Lead reordering failed, transaction rolled back:', error);
+    throw error;
+  } finally {
+    session.endSession();
+  }
+};
+
+// Get all activities from all leads (for global activity log)
+const getAllActivities = async (query: Record<string, unknown>): Promise<any> => {
+  const { userId, role } = query;
+
+  // Build query conditions based on user role
+  const whereConditions: any = {};
+  
+  // If representative, only show activities from their assigned leads
+  if (role === 'representative') {
+    whereConditions.assignedTo = userId;
+  }
+  // Admin and super_admin see all activities
+
+  // Fetch all leads with activities
+  const leads = await Lead.find(whereConditions)
+    .populate('stage')
+    .populate('assignedTo')
+    .populate('activities.addedBy')
+    .populate('activities.completedBy')
+    .select('title name activities assignedTo stage')
+    .lean();
+
+  // Extract and flatten all activities from leads
+  const allActivities: any[] = [];
+  
+  leads.forEach(lead => {
+    if (lead.activities && lead.activities.length > 0) {
+      lead.activities.forEach((activity: any) => {
+        allActivities.push({
+          ...activity,
+          leadId: lead._id,
+          leadTitle: lead.title,
+          leadName: lead.name,
+          assignedTo: lead.assignedTo,
+          stage: lead.stage,
+        });
+      });
+    }
+  });
+
+  // Sort activities by date (newest first)
+  allActivities.sort((a, b) => {
+    const dateA = new Date(a.date).getTime();
+    const dateB = new Date(b.date).getTime();
+    return dateB - dateA;
+  });
+
+  return allActivities;
+};
+
 export const LeadService = {
   createLead,
   getAllLeads,
   getSpecificLead,
   updateLead,
   deleteLead,
+  reorderLeads,
+  getAllActivities,
 };

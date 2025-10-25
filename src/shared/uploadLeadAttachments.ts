@@ -65,9 +65,12 @@ const fileFilter = (req: any, file: any, cb: any) => {
   }
 };
 
-// Multer instance (allow multiple attachments)
+// Multer instance (allow multiple attachments and custom activity attachments)
 export const uploadLeadAttachments = multer({
   storage,
   fileFilter,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
-}).array('attachment', 10); // Allow up to 10 files
+}).fields([
+  { name: 'attachment', maxCount: 10 }, // Regular attachments
+  { name: 'customActivityAttachment', maxCount: 1 }, // Custom activity attachment
+]);

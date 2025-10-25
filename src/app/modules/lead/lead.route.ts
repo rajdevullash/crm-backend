@@ -17,6 +17,18 @@ router.get(
 );
 
 router.get(
+  '/get-all-activities',
+  auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.REPRESENTATIVE),
+  LeadController.getAllActivities
+);
+
+router.post(
+  '/reorder-leads',
+  auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.REPRESENTATIVE),
+  LeadController.reorderLeads
+);
+
+router.get(
   '/:id',
   auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.REPRESENTATIVE),
   LeadController.getSpecificLead

@@ -20,12 +20,13 @@ import { User } from '../auth/auth.model';
 
 const createLead = catchAsync(async (req: Request, res: Response) => {
 
-  // Uploaded files (from multer middleware)
-  const files = req.files as Express.Multer.File[];
+  // Uploaded files (from multer middleware) - now an object with field names as keys
+  const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+  const attachmentFiles = files?.attachment || [];
 
   const attachments =
-    files && files.length > 0
-      ? files.map(file => ({
+    attachmentFiles && attachmentFiles.length > 0
+      ? attachmentFiles.map(file => ({
           url: `/uploads/leads/${file.filename}`,
           originalName: file.originalname,
           type: file.mimetype,
@@ -70,6 +71,7 @@ const createLead = catchAsync(async (req: Request, res: Response) => {
     phone: req.body.phone === '' ? undefined : req.body.phone,
     source: req.body.source === '' ? undefined : req.body.source,
     budget: req.body.budget === '' ? undefined : req.body.budget,
+    currency: req.body.currency === '' ? undefined : req.body.currency,
     followUpDate: req.body.followUpDate === '' ? undefined : req.body.followUpDate,
   };
 
@@ -204,7 +206,10 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   console.log('Updating lead with Body:', req.body);
 
-  const files = req.files as Express.Multer.File[];
+  // Uploaded files - now an object with field names as keys
+  const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+  const attachmentFiles = files?.attachment || [];
+  const customActivityAttachmentFiles = files?.customActivityAttachment || [];
 
   // Get the existing lead to preserve notes and attachments if not provided
   const existingLead = await LeadService.getSpecificLead(id);
@@ -214,14 +219,21 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
 
   // New attachments (if any)
   const newAttachments =
-    files && files.length > 0
-      ? files.map(file => ({
+    attachmentFiles && attachmentFiles.length > 0
+      ? attachmentFiles.map(file => ({
           url: `/uploads/leads/${file.filename}`,
           originalName: file.originalname,
           type: file.mimetype,
           size: file.size,
         }))
       : [];
+
+  // Process custom activity attachment (if any)
+  let customActivityAttachmentUrl: string | undefined;
+  if (customActivityAttachmentFiles && customActivityAttachmentFiles.length > 0) {
+    const file = customActivityAttachmentFiles[0];
+    customActivityAttachmentUrl = `/uploads/leads/${file.filename}`;
+  }
 
   // Parse existing attachments from frontend
   let existingAttachments: any[] = [];
@@ -276,24 +288,37 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
     });
   } else if (notes !== undefined && notes !== null && notes !== '') {
     if (typeof notes === 'string') {
-      const newNote = {
-        _doc: {},
-        text: notes.trim(),
-        addedBy: requestedUser,
-        date: new Date(),
-      };
-
-      // Add the new note to the existing notes
-      formattedNotes.push(newNote);
-    } else {
       try {
-        formattedNotes = (JSON.parse(notes) || []).map((note: any) => ({
-          ...note,
+        const parsedNotes = JSON.parse(notes);
+        
+        // Check if it's an array of notes (editing existing notes)
+        if (Array.isArray(parsedNotes)) {
+          formattedNotes = parsedNotes.map((note: any) => ({
+            _doc: {},
+            _id: note._id,
+            text: note.text,
+            addedBy: note.addedBy, // Preserve existing addedBy
+            date: note.date instanceof Date ? note.date : new Date(note.date),
+          }));
+        } else {
+          // Single string note (new note)
+          const newNote = {
+            _doc: {},
+            text: notes.trim(),
+            addedBy: requestedUser,
+            date: new Date(),
+          };
+          formattedNotes.push(newNote);
+        }
+      } catch {
+        // If JSON parse fails, it's a simple string (new note)
+        const newNote = {
+          _doc: {},
+          text: notes.trim(),
           addedBy: requestedUser,
           date: new Date(),
-        }));
-      } catch {
-        console.warn('Invalid notes JSON format');
+        };
+        formattedNotes.push(newNote);
       }
     }
   } else {
@@ -356,6 +381,11 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
       newActivity.addedBy = requestedUser;
       newActivity.date = new Date(newActivity.date);
 
+      // Add custom activity attachment URL if uploaded
+      if (customActivityAttachmentUrl && newActivity.type === 'custom') {
+        newActivity.customAttachment = customActivityAttachmentUrl;
+      }
+
       formattedActivities.push(newActivity);
       console.log('Added new activity:', newActivity);
     } catch (error) {
@@ -390,6 +420,11 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
         // Create clean activity object without the temporary 'id' field
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id: _tempId, ...activityUpdateData } = updatedActivity;
+        
+        // Add custom activity attachment URL if uploaded (for updates)
+        if (customActivityAttachmentUrl && updatedActivity.type === 'custom') {
+          activityUpdateData.customAttachment = customActivityAttachmentUrl;
+        }
         
         // Update the activity with new data
         formattedActivities[activityIndex] = {
@@ -438,7 +473,7 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
     activities: formattedActivities,
   };
 
-  const result = await LeadService.updateLead(id, data);
+  const result = await LeadService.updateLead(id, data, requestedUser);
 
   // Check if lead assignment changed and send email to newly assigned user
   const oldAssignedTo = existingLead?.assignedTo?.toString();
@@ -490,10 +525,40 @@ const deleteLead = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+// Reorder leads within a stage
+const reorderLeads = catchAsync(async (req: Request, res: Response) => {
+  const { leadOrders } = req.body; // Expecting array of { leadId, order }
+
+  if (!leadOrders || !Array.isArray(leadOrders)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'leadOrders must be an array');
+  }
+
+  await LeadService.reorderLeads(leadOrders);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Leads reordered successfully',
+  });
+});
+
+// Get all activities from all leads (for global activity log)
+const getAllActivities = catchAsync(async (req: Request, res: Response) => {
+  const result = await LeadService.getAllActivities(req.query);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Activities retrieved successfully',
+    data: result,
+  });
+});
+
 export const LeadController = {
   createLead,
   getAllLeads,
   getSpecificLead,
   updateLead,
   deleteLead,
+  reorderLeads,
+  getAllActivities,
 };

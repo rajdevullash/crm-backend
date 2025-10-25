@@ -12,9 +12,15 @@ const leadSchema = new Schema<ILead>(
     phone: { type: String },
     source: { type: String },
     stage: { type: Schema.Types.ObjectId, ref: 'Stage' },
+    order: { type: Number, default: 0 }, // Order within the stage
     assignedTo: { type: Schema.Types.ObjectId, ref: 'User' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     budget: { type: Number },
+    currency: { 
+      type: String, 
+      enum: ['BDT', 'USD', 'EUR'],
+      default: 'USD'
+    },
     attachment: [
         {
         url: { type: String, required: true },
@@ -34,39 +40,46 @@ const leadSchema = new Schema<ILead>(
       {
         type: {
           type: String,
-          enum: ['call', 'meeting', 'mail', 'task', 'note'],
+          enum: ['call', 'meeting', 'email', 'custom'],
           required: true
         },
         date: { type: Date, default: Date.now, required: true },
         addedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-        notes: { type: String },
+        
+        // Completion fields (for all activity types)
+        completed: { type: Boolean, default: false },
+        completedAt: { type: Date },
+        completedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        feedback: { type: String },
         
         // Call specific fields
-        phoneNumber: { type: String },
-        callDuration: { type: Number }, // in minutes
-        callOutcome: { type: String, enum: ['answered', 'missed', 'voicemail', 'callback'] },
+        callNote: { type: String },
         
         // Meeting specific fields
+        meetingType: { type: String, enum: ['online', 'offline'] },
         meetingLink: { type: String },
         meetingLocation: { type: String },
         meetingDate: { type: Date },
         meetingOutcome: { type: String },
+        meetingAttendees: { type: String },
         
-        // Mail specific fields
-        emailSubject: { type: String },
-        emailBody: { type: String },
-        emailTo: { type: String },
-        emailFrom: { type: String },
-        emailStatus: { type: String, enum: ['sent', 'received', 'draft', 'bounced'] },
+        // Email specific fields
+        emailNote: { type: String },
         
-        // Task specific fields
-        taskTitle: { type: String },
-        taskDescription: { type: String },
-        taskDueDate: { type: Date },
-        taskStatus: { type: String, enum: ['pending', 'in-progress', 'completed'] },
-        
-        // Note specific fields
-        noteContent: { type: String },
+        // Custom activity fields (formerly Task)
+        customAttachment: { type: String }, // File path/URL
+        customNote: { type: String },
+      }
+    ],
+    history: [
+      {
+        action: { type: String, required: true }, // 'created', 'stage_changed', 'assigned', 'updated'
+        field: { type: String }, // Which field was changed
+        oldValue: { type: String },
+        newValue: { type: String },
+        changedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        timestamp: { type: Date, default: Date.now, required: true },
+        description: { type: String }, // Human-readable description
       }
     ],
     followUpDate: { type: Date },

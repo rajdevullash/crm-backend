@@ -14,11 +14,13 @@ export type ILead = {
   name: string;                    
   email?: string;
   phone?: string;
+  order?: number;
   source?: string;                 
   stage?: mongoose.Types.ObjectId;              
   assignedTo?: mongoose.Types.ObjectId;        
   createdBy?: mongoose.Types.ObjectId;   
   budget?: number;
+  currency?: string;
   attachment?: {
     _doc: any;
     id: any;
@@ -31,6 +33,15 @@ export type ILead = {
   notes?: Note[];                                   
   followUpDate?: string | null;
   activities?: any[];
+  history?: {
+    action: string;
+    field?: string;
+    oldValue?: string;
+    newValue?: string;
+    changedBy: mongoose.Types.ObjectId;
+    timestamp: Date;
+    description?: string;
+  }[];
   _id?: any;
   updatedAt?: any;
   createdAt?: any;

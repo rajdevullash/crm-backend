@@ -20,10 +20,6 @@ import { authSearchableFields } from './auth.constant';
 const createUser = async (user: IUser): Promise<Omit<IUser, 'password'>> => {
   const { profileImage } = user;
 
-  // Validate that profileImage exists
-  if (!profileImage) {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'Profile image is required');
-  }
   // Check if email already exists
   const existingUser = await User.findOne({ email: user.email });
   if (existingUser) {
@@ -36,11 +32,11 @@ const createUser = async (user: IUser): Promise<Omit<IUser, 'password'>> => {
     Number(config.bycrypt_salt_rounds),
   );
 
-  // Create user with hashed password and FORCE role to be CUSTOMER
+  // Create user with hashed password - profileImage is optional
   const createdUser = await User.create({
     ...user,
     password: hashedPassword,
-    profileImage: profileImage,
+    profileImage: profileImage || null, // Use null if no image provided
   });
 
   // Fetch the user again without the password field
