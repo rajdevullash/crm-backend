@@ -560,30 +560,23 @@ const deleteLead = async (id: string): Promise<ILead | null> => {
 };
 
 const reorderLeads = async (leadOrders: { leadId: string; order: number }[]): Promise<void> => {
-  const session = await mongoose.startSession();
-  
   try {
-    session.startTransaction();
-
-    // Update each lead's order
+    // Update each lead's order without transaction to avoid conflicts
+    // When moving between stages, updateLead is called first without transaction
+    // Using transaction here causes "transaction number mismatch" errors
     const updatePromises = leadOrders.map(({ leadId, order }) =>
       Lead.findByIdAndUpdate(
         leadId,
         { order },
-        { new: true, session }
+        { new: true }
       )
     );
 
     await Promise.all(updatePromises);
-
-    await session.commitTransaction();
     console.log('✅ Lead reordering completed successfully');
   } catch (error) {
-    await session.abortTransaction();
-    console.error('❌ Lead reordering failed, transaction rolled back:', error);
+    console.error('❌ Lead reordering failed:', error);
     throw error;
-  } finally {
-    session.endSession();
   }
 };
 
