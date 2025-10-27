@@ -13,7 +13,7 @@ import { leadFilterableFields } from './lead.constant';
 import { ILead } from './lead.interface';
 import { LeadService } from './lead.service';
 import { Express } from 'express';
-import { emitTaskEvent } from '../socket/socketService';
+import { emitTaskEvent, emitLeadEvent } from '../socket/socketService';
 import { createLeadNotification } from '../../../app/helpers/notificationHelper';
 import { sendLeadAssignmentEmail } from '../../../shared/emailService';
 import { User } from '../auth/auth.model';
@@ -474,6 +474,32 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
   };
 
   const result = await LeadService.updateLead(id, data, requestedUser);
+  const userRole = req.user?.role;
+
+  // Check if stage changed (lead moved)
+  const oldStageId = existingLead?.stage?._id?.toString();
+  const newStageId = result?.stage?._id?.toString() || result?.stage?.toString();
+  
+  if (result && oldStageId !== newStageId) {
+    // Lead moved to different stage
+    console.log('🎯 Lead moved to different stage, emitting socket event');
+    
+    const targetRooms = 
+      userRole === 'representative' 
+        ? ['role_representative']
+        : ['role_admin', 'role_super_admin', 'role_representative'];
+    
+    emitLeadEvent('leads:moved', {
+      message: 'Lead moved to different stage',
+      data: {
+        leadId: id,
+        oldStageId,
+        newStageId,
+        lead: result,
+      },
+      timestamp: new Date().toISOString(),
+    }, targetRooms);
+  }
 
   // Check if lead assignment changed and send email to newly assigned user
   const oldAssignedTo = existingLead?.assignedTo?.toString();
@@ -528,12 +554,28 @@ const deleteLead = catchAsync(async (req: Request, res: Response) => {
 // Reorder leads within a stage
 const reorderLeads = catchAsync(async (req: Request, res: Response) => {
   const { leadOrders } = req.body; // Expecting array of { leadId, order }
+  const userRole = req.user?.role;
 
   if (!leadOrders || !Array.isArray(leadOrders)) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'leadOrders must be an array');
   }
 
   await LeadService.reorderLeads(leadOrders);
+
+  // Emit socket event to notify all connected clients about lead reordering
+  console.log('📋 Leads reordered, emitting socket event');
+  
+  // Target rooms based on user role
+  const targetRooms = 
+    userRole === 'representative' 
+      ? ['role_representative']
+      : ['role_admin', 'role_super_admin', 'role_representative'];
+  
+  emitLeadEvent('leads:reordered', {
+    message: 'Leads reordered successfully',
+    data: { leadOrders },
+    timestamp: new Date().toISOString(),
+  }, targetRooms);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,

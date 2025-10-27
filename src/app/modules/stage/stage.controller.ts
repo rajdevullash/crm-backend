@@ -10,6 +10,7 @@ import sendResponse from '../../../shared/sendResponse';
 import { stageFilterableFields } from './stage.constant';
 import { IStage } from './stage.interface';
 import { StageService } from './stage.service';
+import { emitStageEvent } from '../socket/socketService';
 
 const createStage = catchAsync(async (req: Request, res: Response) => {
     const requestedUser = req.user?.userId;
@@ -89,8 +90,28 @@ const deleteStage = catchAsync(async (req: Request, res: Response) => {
 
 const reorderStages = catchAsync(async (req: Request, res: Response) => {
   const { sourceIndex, destinationIndex } = req.body;
+  const userRole = req.user?.role;
   console.log('Reorder Request Body:', req.body);
+  
   const result = await StageService.reorderStages(sourceIndex, destinationIndex);
+  
+  // Emit socket event to notify all connected clients about stage reorder
+  if (result) {
+    console.log('📊 Stages reordered, emitting socket event');
+    
+    // Target rooms based on user role
+    const targetRooms = 
+      userRole === 'representative' 
+        ? ['role_representative']
+        : ['role_admin', 'role_super_admin', 'role_representative'];
+    
+    emitStageEvent('stages:reordered', {
+      message: 'Stages reordered successfully',
+      data: result,
+      timestamp: new Date().toISOString(),
+    }, targetRooms);
+  }
+  
   sendResponse<IStage[]>(res, {
     statusCode: httpStatus.OK,
     success: true,

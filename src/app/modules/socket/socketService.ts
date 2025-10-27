@@ -10,8 +10,9 @@ let io: SocketIOServer;
 export const initializeSocket = (server: HTTPServer) => {
   io = new SocketIOServer(server, {
     cors: {
-      origin: "http://localhost:3000",
+      origin: ["http://localhost:3000", "https://crm-datapollex.vercel.app"],
       methods: ["GET", "POST"],
+      credentials: true,
     },
   });
 
@@ -82,6 +83,26 @@ export const emitDashboardEvent = (event: string, data: any, targetRooms?: strin
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const emitNotificationEvent = (event: string, data: any, targetRooms?: string[]) => {
+  const socketIO = getIO();
+  if (targetRooms?.length) {
+    targetRooms.forEach((room) => socketIO.to(room).emit(event, data));
+  } else {
+    socketIO.emit(event, data);
+  }
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const emitLeadEvent = (event: string, data: any, targetRooms?: string[]) => {
+  const socketIO = getIO();
+  if (targetRooms?.length) {
+    targetRooms.forEach((room) => socketIO.to(room).emit(event, data));
+  } else {
+    socketIO.emit(event, data);
+  }
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const emitStageEvent = (event: string, data: any, targetRooms?: string[]) => {
   const socketIO = getIO();
   if (targetRooms?.length) {
     targetRooms.forEach((room) => socketIO.to(room).emit(event, data));
