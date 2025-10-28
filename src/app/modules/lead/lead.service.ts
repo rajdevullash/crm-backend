@@ -383,7 +383,24 @@ const updateLead = async (
     }
   }
 
-  // Check if activities are being added
+  // Check if quick note is being updated
+  if (payload.quickNote !== undefined) {
+    const oldQuickNote = existingLead.quickNote || '';
+    const newQuickNote = payload.quickNote || '';
+    
+    // Only log if there's an actual change and the new value is not empty
+    if (oldQuickNote !== newQuickNote && newQuickNote.trim() !== '') {
+      historyEntries.push({
+        action: 'quick_note_updated',
+        field: 'quickNote',
+        changedBy: currentUserId,
+        timestamp: new Date(),
+        description: 'Quick Note has been updated'
+      });
+    }
+  }
+
+  // Check if activities are being added, edited, or deleted
   if (payload.activities && Array.isArray(payload.activities)) {
     const existingActivitiesCount = existingLead.activities?.length || 0;
     const newActivitiesCount = payload.activities.length;
@@ -392,23 +409,243 @@ const updateLead = async (
       // New activity was added
       const newActivity = payload.activities[payload.activities.length - 1];
       const activityType = newActivity.type || 'activity';
+      
+      // Format the scheduled date
+      let scheduledDate = '';
+      if (newActivity.date) {
+        const date = new Date(newActivity.date);
+        scheduledDate = date.toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric' 
+        });
+      } else if (newActivity.meetingDate) {
+        const date = new Date(newActivity.meetingDate);
+        scheduledDate = date.toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric' 
+        });
+      }
+      
+      // Create description with scheduled date
+      const description = scheduledDate 
+        ? `${activityType.charAt(0).toUpperCase() + activityType.slice(1)} has been scheduled for ${scheduledDate}`
+        : `Added a new ${activityType} activity`;
+      
       historyEntries.push({
         action: 'activity_added',
         field: 'activities',
         newValue: activityType,
         changedBy: currentUserId,
         timestamp: new Date(),
-        description: `Added a new ${activityType} activity`
+        description: description
       });
     } else if (newActivitiesCount < existingActivitiesCount) {
-      // Activity was deleted
-      historyEntries.push({
-        action: 'activity_deleted',
-        field: 'activities',
-        changedBy: currentUserId,
-        timestamp: new Date(),
-        description: 'Deleted an activity'
-      });
+      // Activity was deleted - find which one
+      const deletedActivity = existingLead.activities?.find((existingAct: any) => 
+        !payload.activities?.some((newAct: any) => 
+          (newAct._id && newAct._id.toString() === existingAct._id.toString()) ||
+          (newAct.id && newAct.id.toString() === existingAct._id.toString())
+        )
+      );
+      
+      if (deletedActivity) {
+        const activityType = deletedActivity.type || 'activity';
+        let scheduledDate = '';
+        if (deletedActivity.date) {
+          const date = new Date(deletedActivity.date);
+          scheduledDate = date.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+          });
+        } else if (deletedActivity.meetingDate) {
+          const date = new Date(deletedActivity.meetingDate);
+          scheduledDate = date.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+          });
+        }
+        
+        const description = scheduledDate
+          ? `Deleted ${activityType} scheduled for ${scheduledDate}`
+          : `Deleted a ${activityType} activity`;
+        
+        historyEntries.push({
+          action: 'activity_deleted',
+          field: 'activities',
+          changedBy: currentUserId,
+          timestamp: new Date(),
+          description: description
+        });
+      } else {
+        historyEntries.push({
+          action: 'activity_deleted',
+          field: 'activities',
+          changedBy: currentUserId,
+          timestamp: new Date(),
+          description: 'Deleted an activity'
+        });
+      }
+    } else if (newActivitiesCount === existingActivitiesCount && newActivitiesCount > 0) {
+      // Check if any activity was edited or status changed
+      for (let i = 0; i < payload.activities.length; i++) {
+        const newActivity = payload.activities[i];
+        const existingActivity = existingLead.activities?.find((act: any) => 
+          (newActivity._id && act._id.toString() === newActivity._id.toString()) ||
+          (newActivity.id && act._id.toString() === newActivity.id.toString())
+        );
+        
+        if (existingActivity) {
+          const activityType = newActivity.type || existingActivity.type || 'activity';
+          
+          // Check if activity was marked as done
+          if (newActivity.completed && !existingActivity.completed) {
+            let scheduledDate = '';
+            if (newActivity.date) {
+              const date = new Date(newActivity.date);
+              scheduledDate = date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+              });
+            }
+            
+            let description = scheduledDate
+              ? `Marked ${activityType} (${scheduledDate}) as done`
+              : `Marked ${activityType} as done`;
+            
+            // Add feedback if provided
+            if (newActivity.feedback && newActivity.feedback.trim() !== '') {
+              description += ` with feedback: "${newActivity.feedback}"`;
+            }
+            
+            historyEntries.push({
+              action: 'activity_completed',
+              field: 'activities',
+              changedBy: currentUserId,
+              timestamp: new Date(),
+              description: description
+            });
+          } 
+          // Check if activity was marked as undone
+          else if (!newActivity.completed && existingActivity.completed) {
+            let scheduledDate = '';
+            if (newActivity.date) {
+              const date = new Date(newActivity.date);
+              scheduledDate = date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+              });
+            }
+            
+            const description = scheduledDate
+              ? `Marked ${activityType} (${scheduledDate}) as not done`
+              : `Marked ${activityType} as not done`;
+            
+            historyEntries.push({
+              action: 'activity_undone',
+              field: 'activities',
+              changedBy: currentUserId,
+              timestamp: new Date(),
+              description: description
+            });
+          }
+          // Check if feedback was edited (for completed activities)
+          else if (newActivity.completed && existingActivity.completed && 
+                   newActivity.feedback !== existingActivity.feedback) {
+            historyEntries.push({
+              action: 'activity_feedback_updated',
+              field: 'activities',
+              changedBy: currentUserId,
+              timestamp: new Date(),
+              description: `Updated feedback for ${activityType}: "${newActivity.feedback}"`
+            });
+          }
+          // Check if other fields were edited (for both completed and non-completed activities)
+          else {
+            // Check if any field changed
+            const fieldsChanged = 
+              newActivity.type !== existingActivity.type ||
+              newActivity.date !== existingActivity.date ||
+              newActivity.callNote !== existingActivity.callNote ||
+              newActivity.meetingDate !== existingActivity.meetingDate ||
+              newActivity.meetingType !== existingActivity.meetingType ||
+              newActivity.meetingLink !== existingActivity.meetingLink ||
+              newActivity.meetingLocation !== existingActivity.meetingLocation ||
+              newActivity.emailNote !== existingActivity.emailNote ||
+              newActivity.customNote !== existingActivity.customNote;
+            
+            if (fieldsChanged) {
+              let scheduledDate = '';
+              if (newActivity.date) {
+                const date = new Date(newActivity.date);
+                scheduledDate = date.toLocaleDateString('en-US', { 
+                  year: 'numeric', 
+                  month: 'short', 
+                  day: 'numeric' 
+                });
+              }
+              
+              const statusText = newActivity.completed ? ' (completed)' : '';
+              const description = scheduledDate
+                ? `Updated ${activityType}${statusText} scheduled for ${scheduledDate}`
+                : `Updated ${activityType}${statusText} activity`;
+              
+              historyEntries.push({
+                action: 'activity_updated',
+                field: 'activities',
+                changedBy: currentUserId,
+                timestamp: new Date(),
+                description: description
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Check for overdue activities and mark them in history
+  if (existingLead.activities && Array.isArray(existingLead.activities)) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    existingLead.activities.forEach((activity: any) => {
+      // Check if activity is overdue and not marked as overdue yet
+      if (!activity.completed && !activity.markedAsOverdue) {
+        const activityDate = new Date(activity.date || activity.meetingDate);
+        activityDate.setHours(0, 0, 0, 0);
+        
+        if (activityDate < today) {
+          // Activity is overdue
+          const activityType = activity.type || 'activity';
+          const overdueDate = activityDate.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+          });
+          
+          historyEntries.push({
+            action: 'activity_overdue',
+            field: 'activities',
+            changedBy: currentUserId,
+            timestamp: new Date(),
+            description: `${activityType.charAt(0).toUpperCase() + activityType.slice(1)} scheduled for ${overdueDate} is overdue`
+          });
+          
+          // Mark this activity as overdue so we don't log it again
+          activity.markedAsOverdue = true;
+        }
+      }
+    });
+    
+    // Update the activities array with markedAsOverdue flag if any were marked
+    if (historyEntries.some((entry: any) => entry.action === 'activity_overdue')) {
+      payload.activities = existingLead.activities;
     }
   }
 

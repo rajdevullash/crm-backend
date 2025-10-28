@@ -224,62 +224,157 @@ const getAllUsers = async (
   const whereConditions =
     andConditions.length > 0 ? { $and: andConditions } : {};
 
-  // Use aggregation to include task statistics
+  // Use aggregation to include activities statistics from leads
   const result = await User.aggregate([
     // Match users based on filters
     {
       $match: whereConditions,
     },
     
-    // Lookup tasks assigned to each user
+    // Lookup leads assigned to each user (representative)
     {
       $lookup: {
-        from: 'tasks',
+        from: 'leads',
         localField: '_id',
-        foreignField: 'assignTo',
-        as: 'tasks',
+        foreignField: 'assignedTo',
+        as: 'leads',
       },
     },
     
-    // Add task statistics
+    // Unwind leads to access activities
+    {
+      $unwind: {
+        path: '$leads',
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    
+    // Unwind activities from each lead
+    {
+      $unwind: {
+        path: '$leads.activities',
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    
+    // Group back to calculate activities statistics
+    {
+      $group: {
+        _id: '$_id',
+        // Keep all original user fields
+        name: { $first: '$name' },
+        email: { $first: '$email' },
+        role: { $first: '$role' },
+        contactNo: { $first: '$contactNo' },
+        address: { $first: '$address' },
+        profileImage: { $first: '$profileImage' },
+        incentivePercentage: { $first: '$incentivePercentage' },
+        createdAt: { $first: '$createdAt' },
+        updatedAt: { $first: '$updatedAt' },
+        
+        // Calculate activities statistics
+        activities: { $push: '$leads.activities' },
+      },
+    },
+    
+    // Add activities counts with date-only comparison for overdue
     {
       $addFields: {
-        completedTasks: {
+        completedActivities: {
           $size: {
             $filter: {
-              input: '$tasks',
-              as: 'task',
-              cond: { $eq: ['$$task.status', 'completed'] },
+              input: '$activities',
+              as: 'activity',
+              cond: { 
+                $and: [
+                  { $ne: ['$$activity', null] },
+                  { $eq: ['$$activity.completed', true] }
+                ]
+              },
             },
           },
         },
-        pendingTasks: {
+        upcomingActivities: {
           $size: {
             $filter: {
-              input: '$tasks',
-              as: 'task',
-              cond: { $eq: ['$$task.status', 'pending'] },
+              input: '$activities',
+              as: 'activity',
+              cond: { 
+                $and: [
+                  { $ne: ['$$activity', null] },
+                  { $ne: ['$$activity.completed', true] },
+                  { 
+                    $gte: [
+                      { 
+                        $dateFromParts: {
+                          year: { $year: '$$activity.date' },
+                          month: { $month: '$$activity.date' },
+                          day: { $dayOfMonth: '$$activity.date' }
+                        }
+                      },
+                      { 
+                        $dateFromParts: {
+                          year: { $year: new Date() },
+                          month: { $month: new Date() },
+                          day: { $dayOfMonth: new Date() }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
             },
           },
         },
-        cancelledTasks: {
+        overdueActivities: {
           $size: {
             $filter: {
-              input: '$tasks',
-              as: 'task',
-              cond: { $eq: ['$$task.status', 'cancelled'] },
+              input: '$activities',
+              as: 'activity',
+              cond: { 
+                $and: [
+                  { $ne: ['$$activity', null] },
+                  { $ne: ['$$activity.completed', true] },
+                  { 
+                    $lt: [
+                      { 
+                        $dateFromParts: {
+                          year: { $year: '$$activity.date' },
+                          month: { $month: '$$activity.date' },
+                          day: { $dayOfMonth: '$$activity.date' }
+                        }
+                      },
+                      { 
+                        $dateFromParts: {
+                          year: { $year: new Date() },
+                          month: { $month: new Date() },
+                          day: { $dayOfMonth: new Date() }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
             },
           },
         },
-        totalTasks: { $size: '$tasks' },
+        totalActivities: {
+          $size: {
+            $filter: {
+              input: '$activities',
+              as: 'activity',
+              cond: { $ne: ['$$activity', null] }
+            }
+          }
+        },
       },
     },
     
-    // Remove password and tasks array from output
+    // Remove password and activities array from output
     {
       $project: {
         password: 0,
-        tasks: 0,
+        activities: 0,
       },
     },
     

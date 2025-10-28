@@ -5,6 +5,7 @@ import { LeadRoutes } from '../modules/lead/lead.route';
 import { StageRoutes } from '../modules/stage/stage.route';
 import { DashboardRoutes } from '../modules/dashboard/dashboard.route';
 import { NotificationRoutes } from '../modules/notification/notification.route';
+import { DealCloseRequestRoutes } from '../modules/dealCloseRequest/dealCloseRequest.route';
 
 const router = express.Router();
 
@@ -32,6 +33,10 @@ const moduleRoutes = [
   {
     path: '/notifications',
     route: NotificationRoutes,
+  },
+  {
+    path: '/deal-close-requests',
+    route: DealCloseRequestRoutes,
   }
 ];
 

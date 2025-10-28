@@ -36,6 +36,7 @@ const leadSchema = new Schema<ILead>(
         date: { type: Date, default: Date.now },
       },
     ],
+    quickNote: { type: String, default: '' }, // Persistent quick note field for representatives
     activities: [
       {
         type: {
@@ -51,6 +52,7 @@ const leadSchema = new Schema<ILead>(
         completedAt: { type: Date },
         completedBy: { type: Schema.Types.ObjectId, ref: 'User' },
         feedback: { type: String },
+        markedAsOverdue: { type: Boolean, default: false }, // Track if overdue was logged
         
         // Call specific fields
         callNote: { type: String },
@@ -71,6 +73,18 @@ const leadSchema = new Schema<ILead>(
         customNote: { type: String },
       }
     ],
+    
+    // Deal closing fields
+    dealStatus: { 
+      type: String, 
+      enum: ['open', 'lost', 'closing_requested', 'closed'],
+      default: 'open'
+    },
+    lostReason: { type: String },
+    closingRequestedAt: { type: Date },
+    closedAt: { type: Date },
+    closedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    
     history: [
       {
         action: { type: String, required: true }, // 'created', 'stage_changed', 'assigned', 'updated'

@@ -30,9 +30,18 @@ export type ILead = {
     type: string; 
     size?: number;
   }[] | null;        
-  notes?: Note[];                                   
+  notes?: Note[];
+  quickNote?: string; // Persistent quick note field
   followUpDate?: string | null;
   activities?: any[];
+  
+  // Deal closing fields
+  dealStatus?: 'open' | 'lost' | 'closing_requested' | 'closed';
+  lostReason?: string;
+  closingRequestedAt?: Date;
+  closedAt?: Date;
+  closedBy?: mongoose.Types.ObjectId;
+  
   history?: {
     action: string;
     field?: string;

@@ -15,6 +15,7 @@ const userSchema = new Schema<IUser>(
     },
     profileImage: { type: String, default: null },
     joinDate: { type: Date, default: Date.now },
+    incentivePercentage: { type: Number, default: 0 }, // Incentive % for representatives
     performancePoint: { type: Number, default: 0 },
     totalLeads: { type: Number, default: 0 },
     convertedLeads: [

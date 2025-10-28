@@ -8,6 +8,7 @@ export type IUser = {
   role?: ENUM_USER_ROLE;
   profileImage?: string | null;
   joinDate?: Date; // ISO date string (e.g. "2025-10-05T08:45:00.000Z")
+  incentivePercentage?: number; // Incentive % for representatives
   performancePoint?: number;
   totalLeads?: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
