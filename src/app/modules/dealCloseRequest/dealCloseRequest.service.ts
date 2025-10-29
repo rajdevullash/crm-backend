@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { IDealCloseRequest, IDealCloseRequestFilters } from './dealCloseRequest.interface';
 import { DealCloseRequest } from './dealCloseRequest.model';
 import { Lead } from '../lead/lead.model';
@@ -8,6 +9,7 @@ import { IPaginationOptions } from '../../../interfaces/pagination';
 import { IGenericResponse } from '../../../interfaces/common';
 import { paginationHelpers } from '../../../helpers/paginationHelper';
 import { dealCloseRequestSearchableFields } from './dealCloseRequest.constant';
+import { Stage } from '../stage/stage.model';
 
 // Create a new deal close request
 const createCloseRequest = async (
@@ -209,6 +211,16 @@ const approveCloseRequest = async (
     closedBy: adminId,
   });
 
+  // lead stage id update to won
+  // If you maintain a separate Stage model/collection, import it and update the stage here.
+  // Removed direct reference to an undefined `stages` variable to avoid runtime/compile errors.
+  // Example (uncomment and adjust import if you have a Stage model):
+  const wonStage = await Stage.findOne({ title: /won/i });
+  if (wonStage) {
+    await Lead.findByIdAndUpdate(closeRequest.lead, { stage: wonStage._id });
+  }
+  // No-op if no Stage model is available.
+
   // Add to history
   await Lead.findByIdAndUpdate(closeRequest.lead, {
     $push: {
@@ -258,6 +270,12 @@ const rejectCloseRequest = async (
     dealStatus: 'open',
     closingRequestedAt: undefined,
   });
+
+  // If you maintain a separate Stage model/collection, import it and update the stage here.
+  const lostStage = await Stage.findOne({ title: /lost/i });
+  if (lostStage) {
+    await Lead.findByIdAndUpdate(closeRequest.lead, { stage: lostStage._id });
+  }
 
   // Add to history
   await Lead.findByIdAndUpdate(closeRequest.lead, {

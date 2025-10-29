@@ -28,4 +28,11 @@ router.get(
   DashboardController.getRevenueOverview
 );
 
+// Get representative dashboard statistics - accessible by representatives only
+router.get(
+  '/representative-stats',
+  auth(ENUM_USER_ROLE.REPRESENTATIVE),
+  DashboardController.getRepresentativeStats
+);
+
 export const DashboardRoutes = router;

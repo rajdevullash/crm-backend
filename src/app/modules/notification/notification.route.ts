@@ -56,4 +56,11 @@ router.delete(
   NotificationController.deleteNotification
 );
 
+// Trigger activity reminder check manually (for testing - admin only)
+router.post(
+  '/trigger-reminder-check',
+  auth(ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.SUPER_ADMIN),
+  NotificationController.triggerReminderCheck
+);
+
 export const NotificationRoutes = router;

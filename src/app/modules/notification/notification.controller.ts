@@ -7,6 +7,7 @@ import { paginationFields } from '../../../constants/pagination';
 import pick from '../../../shared/pick';
 import { notificationFilterableFields } from './notification.constant';
 import { INotification } from './notification.interface';
+import { triggerActivityReminderCheck } from './activityReminderService';
 
 // Get all notifications for logged-in user
 const getAllNotifications = catchAsync(async (req: Request, res: Response) => {
@@ -86,10 +87,25 @@ const deleteNotification = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+// Trigger activity reminder check manually (for testing)
+const triggerReminderCheck = catchAsync(async (req: Request, res: Response) => {
+  const result = await triggerActivityReminderCheck();
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: result.success,
+    message: result.success 
+      ? `Reminder check completed. ${result.notificationsCreated} notifications created.`
+      : 'Reminder check failed',
+    data: result,
+  });
+});
+
 export const NotificationController = {
   getAllNotifications,
   markAsRead,
   markAllAsRead,
   getUnreadCount,
   deleteNotification,
+  triggerReminderCheck,
 };

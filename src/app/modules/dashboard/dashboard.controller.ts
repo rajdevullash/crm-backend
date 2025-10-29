@@ -3,6 +3,7 @@ import httpStatus from 'http-status';
 import catchAsync from '../../../shared/catchAsync';
 import sendResponse from '../../../shared/sendResponse';
 import { DashboardService } from './dashboard.service';
+import { RepresentativeDashboardService } from './representativeDashboard.service';
 import { emitDashboardEvent } from '../socket/socketService';
 
 const getLeaderboard = catchAsync(async (req: Request, res: Response) => {
@@ -98,7 +99,30 @@ const getRevenueOverview = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getRepresentativeStats = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+
+  if (!userId) {
+    return sendResponse(res, {
+      statusCode: httpStatus.UNAUTHORIZED,
+      success: false,
+      message: 'User not authenticated',
+      data: null,
+    });
+  }
+
+  const result = await RepresentativeDashboardService.getRepresentativeDashboardStats(userId);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Representative dashboard statistics retrieved successfully',
+    data: result,
+  });
+});
+
 export const DashboardController = {
   getLeaderboard,
   getRevenueOverview,
+  getRepresentativeStats,
 };
