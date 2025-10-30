@@ -14,70 +14,52 @@ import { Stage } from '../stage/stage.model';
 import { Task } from '../task/task.model';
 
 const createLead = async (payload: ILead): Promise<ILead | null> => {
-  // Start a Mongoose session for transaction
-  const session = await mongoose.startSession();
-  
-  try {
-    // Start transaction
-    session.startTransaction();
-
-    // Validate userId
-    const userId = payload.createdBy;
-    if (!userId) {
-      throw new ApiError(httpStatus.BAD_REQUEST, 'createdBy is required');
-    }
-
-    // ✅ If stage is not provided or is null/empty, set the first stage as default
-    if (!payload.stage || payload.stage.toString() === '') {
-      const firstStage = await Stage.findOne({ isActive: true }).sort({ position: 1 }).session(session);
-      if (firstStage) {
-        payload.stage = firstStage._id;
-        console.log(`No stage provided. Setting default stage: ${firstStage.title} (${firstStage._id})`);
-      } else {
-        throw new ApiError(httpStatus.NOT_FOUND, 'No active stage found. Please create a stage first.');
-      }
-    }
-
-    // Update user's totalLeads count within transaction
-    const user = await User.findOneAndUpdate(
-      { _id: userId },
-      { $inc: { totalLeads: 1 } },
-      { new: true, session } // Pass session to include in transaction
-    );
-
-    if (!user) {
-      throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
-    }
-
-    // Add initial history entry for lead creation
-    const initialHistory = {
-      action: 'created',
-      changedBy: userId,
-      timestamp: new Date(),
-      description: 'Lead was created'
-    };
-
-    // Add history to payload
-    const leadDataWithHistory = {
-      ...payload,
-      history: [initialHistory]
-    };
-
-    // Create lead within transaction (create with array returns array)
-    const result = await Lead.create([leadDataWithHistory], { session });
-
-    // Commit transaction if everything succeeds
-    await session.commitTransaction();
-    
-    return result[0];
-  } catch (error) {
-    // Rollback transaction on error
-    await session.abortTransaction();
-    throw error;
-  } finally {
-    // End session
-    session.endSession();
+  // Validate userId
+  const userId = payload.createdBy;
+  if (!userId) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'createdBy is required');
   }
+
+  // ✅ If stage is not provided or is null/empty, set the first stage as default
+  if (!payload.stage || payload.stage.toString() === '') {
+    const firstStage = await Stage.findOne({ isActive: true }).sort({ position: 1 });
+    if (firstStage) {
+      payload.stage = firstStage._id;
+      console.log(`No stage provided. Setting default stage: ${firstStage.title} (${firstStage._id})`);
+    } else {
+      throw new ApiError(httpStatus.NOT_FOUND, 'No active stage found. Please create a stage first.');
+    }
+  }
+
+  // Update user's totalLeads count
+  const user = await User.findOneAndUpdate(
+    { _id: userId },
+    { $inc: { totalLeads: 1 } },
+    { new: true }
+  );
+
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
+  }
+
+  // Add initial history entry for lead creation
+  const initialHistory = {
+    action: 'created',
+    changedBy: userId,
+    timestamp: new Date(),
+    description: 'Lead was created'
+  };
+
+  // Add history to payload
+  const leadDataWithHistory = {
+    ...payload,
+    history: [initialHistory]
+  };
+
+  // Create lead
+  const result = await Lead.create(leadDataWithHistory);
+  
+  return result;
 };
 
 //get all leads
@@ -712,88 +694,67 @@ const updateLead = async (
 
 //delete lead
 const deleteLead = async (id: string): Promise<ILead | null> => {
-  // Start a Mongoose session for transaction
-  const session = await mongoose.startSession();
-
-  try {
-    // Start transaction
-    session.startTransaction();
-
-    // Find the lead to delete
-    const existingLead = await Lead.findOne({ _id: id }).session(session);
-    if (!existingLead) {
-      throw new ApiError(httpStatus.NOT_FOUND, 'Lead not found');
-    }
-
-    console.log(`Deleting lead: ${existingLead._id}`);
-
-    // Step 1: Update the creator's totalLeads count
-    const userId = existingLead.createdBy;
-    if (userId) {
-      console.log(`Updating creator user: ${userId}`);
-      
-      const userUpdateResult = await User.findOneAndUpdate(
-        { _id: userId },
-        { 
-          $inc: { totalLeads: -1 }, 
-        },
-        { new: true, session }
-      );
-
-      if (!userUpdateResult) {
-        throw new ApiError(httpStatus.NOT_FOUND, 'Creator user not found');
-      }
-
-      console.log(`Updated creator's totalLeads: ${userUpdateResult.totalLeads}`);
-    }
-
-    // Step 2: Remove this lead from ALL users' convertedLeads arrays
-    // This handles cases where the lead was assigned to a representative
-    // and they converted it, or if the creator converted it
-    const usersWithConvertedLead = await User.updateMany(
-      { convertedLeads: existingLead._id },
-      { 
-        $pull: { convertedLeads: existingLead._id } 
-      },
-      { session }
-    );
-
-    if (usersWithConvertedLead.modifiedCount > 0) {
-      console.log(`Removed lead from ${usersWithConvertedLead.modifiedCount} user(s) convertedLeads arrays`);
-    }
-
-    // Step 3: Delete associated tasks
-    const deletedTasks = await Task.deleteMany(
-      { lead: existingLead._id },
-      { session }
-    );
-    
-    console.log(`Deleted ${deletedTasks.deletedCount} associated tasks`);
-
-    // Step 4: Delete the lead
-    const deletedLead = await Lead.findOneAndDelete(
-      { _id: id },
-      { session }
-    );
-
-    if (!deletedLead) {
-      throw new ApiError(httpStatus.NOT_FOUND, 'Lead not found during deletion');
-    }
-
-    // Commit transaction if all operations succeed
-    await session.commitTransaction();
-    console.log('✅ Lead deletion completed successfully');
-
-    return deletedLead;
-  } catch (error) {
-    // Rollback transaction on error
-    await session.abortTransaction();
-    console.error('❌ Lead deletion failed, transaction rolled back:', error);
-    throw error;
-  } finally {
-    // End session
-    session.endSession();
+  // Find the lead to delete
+  const existingLead = await Lead.findOne({ _id: id });
+  if (!existingLead) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'Lead not found');
   }
+
+  console.log(`Deleting lead: ${existingLead._id}`);
+
+  // Step 1: Update the creator's totalLeads count
+  const userId = existingLead.createdBy;
+  if (userId) {
+    console.log(`Updating creator user: ${userId}`);
+    
+    const userUpdateResult = await User.findOneAndUpdate(
+      { _id: userId },
+      { 
+        $inc: { totalLeads: -1 }, 
+      },
+      { new: true }
+    );
+
+    if (!userUpdateResult) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Creator user not found');
+    }
+
+    console.log(`Updated creator's totalLeads: ${userUpdateResult.totalLeads}`);
+  }
+
+  // Step 2: Remove this lead from ALL users' convertedLeads arrays
+  // This handles cases where the lead was assigned to a representative
+  // and they converted it, or if the creator converted it
+  const usersWithConvertedLead = await User.updateMany(
+    { convertedLeads: existingLead._id },
+    { 
+      $pull: { convertedLeads: existingLead._id } 
+    }
+  );
+
+  if (usersWithConvertedLead.modifiedCount > 0) {
+    console.log(`Removed lead from ${usersWithConvertedLead.modifiedCount} user(s) convertedLeads arrays`);
+  }
+
+  // Step 3: Delete associated tasks
+  const deletedTasks = await Task.deleteMany(
+    { lead: existingLead._id }
+  );
+  
+  console.log(`Deleted ${deletedTasks.deletedCount} associated tasks`);
+
+  // Step 4: Delete the lead
+  const deletedLead = await Lead.findOneAndDelete(
+    { _id: id }
+  );
+
+  if (!deletedLead) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'Lead not found during deletion');
+  }
+
+  console.log('✅ Lead deletion completed successfully');
+
+  return deletedLead;
 };
 
 const reorderLeads = async (leadOrders: { leadId: string; order: number }[]): Promise<void> => {
