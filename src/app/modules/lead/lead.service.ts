@@ -172,6 +172,17 @@ const updateLead = async (
   userId?: string
 ): Promise<ILead | null> => {
   console.log('id', id);
+  
+  // Clean up empty string values that should be undefined (for ObjectId fields)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((payload.assignedTo as any) === '' || payload.assignedTo === null) {
+    delete payload.assignedTo;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((payload.stage as any) === '' || payload.stage === null) {
+    delete payload.stage;
+  }
+  
   const existingLead = await Lead.findOne({ _id: id })
     .populate('stage')
     .populate('assignedTo');
