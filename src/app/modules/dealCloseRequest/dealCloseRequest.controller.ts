@@ -136,6 +136,22 @@ const deleteCloseRequest = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+// Get approved close requests for current representative
+const getMyApprovedRequests = catchAsync(async (req: Request, res: Response) => {
+  const representativeId = req.user?.userId;
+
+  const result = await DealCloseRequestService.getApprovedRequestsForRepresentative(
+    representativeId
+  );
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Approved close requests retrieved successfully',
+    data: result,
+  });
+});
+
 export const DealCloseRequestController = {
   createCloseRequest,
   markAsLost,
@@ -143,4 +159,5 @@ export const DealCloseRequestController = {
   approveCloseRequest,
   rejectCloseRequest,
   deleteCloseRequest,
+  getMyApprovedRequests,
 };

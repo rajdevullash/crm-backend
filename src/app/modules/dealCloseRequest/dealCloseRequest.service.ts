@@ -346,6 +346,22 @@ const deleteCloseRequest = async (
   });
 };
 
+// Get approved close requests for a representative
+const getApprovedRequestsForRepresentative = async (
+  representativeId: string
+): Promise<IDealCloseRequest[]> => {
+  const result = await DealCloseRequest.find({
+    representative: representativeId,
+    status: 'approved',
+  })
+    .populate('lead')
+    .populate('representative', 'name email profileImage incentivePercentage')
+    .populate('approvedBy', 'name email')
+    .sort({ approvedAt: -1 });
+
+  return result;
+};
+
 export const DealCloseRequestService = {
   createCloseRequest,
   markAsLost,
@@ -353,4 +369,5 @@ export const DealCloseRequestService = {
   approveCloseRequest,
   rejectCloseRequest,
   deleteCloseRequest,
+  getApprovedRequestsForRepresentative,
 };

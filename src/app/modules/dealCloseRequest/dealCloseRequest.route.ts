@@ -24,6 +24,12 @@ router.delete(
   DealCloseRequestController.deleteCloseRequest
 );
 
+router.get(
+  '/my-approved',
+  auth(ENUM_USER_ROLE.REPRESENTATIVE),
+  DealCloseRequestController.getMyApprovedRequests
+);
+
 // Admin routes
 router.get(
   '/',
