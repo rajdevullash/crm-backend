@@ -7,9 +7,9 @@ import { ILead } from './lead.interface';
 const leadSchema = new Schema<ILead>(
   {
     title: { type: String, required: true },
-    name: { type: String, required: true },
+    name: { type: String },
     email: { type: String },
-    phone: { type: String },
+    phone: { type: String, required: true },
     source: { type: String },
     stage: { type: Schema.Types.ObjectId, ref: 'Stage' },
     order: { type: Number, default: 0 }, // Order within the stage

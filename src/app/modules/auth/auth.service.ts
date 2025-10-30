@@ -146,25 +146,45 @@ const updateUser = async (
   id: string,
   payload: Partial<IUser>,
 ): Promise<IUser | null> => {
-  console.log('id', id);
+  console.log('Service updateUser - id:', id);
+  console.log('Service updateUser - payload:', payload);
+  
   const existingUser = await User.findOne({ _id: id });
   if (!existingUser) {
     throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
   }
 
+  console.log('Existing user found:', existingUser.email);
+  console.log('Existing user profileImage:', existingUser.profileImage);
+
+  // Remove undefined, null, and empty string fields from payload
+  const cleanPayload: Partial<IUser> = {};
+  Object.keys(payload).forEach((key) => {
+    const value = payload[key as keyof IUser];
+    if (value !== undefined && value !== null && value !== '') {
+      cleanPayload[key as keyof IUser] = value as any;
+    }
+  });
+
+  console.log('Clean payload after removing empty values:', cleanPayload);
+
   // If password is being updated, hash the new password
-  if (payload.password) {
-    //check if the
-    payload.password = await bcrypt.hash(
-      payload.password,
+  if (cleanPayload.password) {
+    cleanPayload.password = await bcrypt.hash(
+      cleanPayload.password,
       Number(config.bycrypt_salt_rounds),
     );
   }
 
-  // Perform the update in the database
-  const result = await User.findOneAndUpdate({ _id: id }, payload, {
+  console.log('About to update with clean payload:', cleanPayload);
+
+  // Perform the update in the database - only updates fields present in cleanPayload
+  const result = await User.findOneAndUpdate({ _id: id }, cleanPayload, {
     new: true,
   });
+
+  console.log('Update result - profileImage:', result?.profileImage);
+  console.log('Update complete - returning user:', result?.email);
 
   return result;
 };
@@ -265,7 +285,7 @@ const getAllUsers = async (
         name: { $first: '$name' },
         email: { $first: '$email' },
         role: { $first: '$role' },
-        contactNo: { $first: '$contactNo' },
+        phone: { $first: '$phone' },
         address: { $first: '$address' },
         profileImage: { $first: '$profileImage' },
         incentivePercentage: { $first: '$incentivePercentage' },

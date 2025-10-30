@@ -376,22 +376,8 @@ const updateLead = async (
     }
   }
 
-  // Check if quick note is being updated
-  if (payload.quickNote !== undefined) {
-    const oldQuickNote = existingLead.quickNote || '';
-    const newQuickNote = payload.quickNote || '';
-    
-    // Only log if there's an actual change and the new value is not empty
-    if (oldQuickNote !== newQuickNote && newQuickNote.trim() !== '') {
-      historyEntries.push({
-        action: 'quick_note_updated',
-        field: 'quickNote',
-        changedBy: currentUserId,
-        timestamp: new Date(),
-        description: 'Quick Note has been updated'
-      });
-    }
-  }
+  // Quick note updates are not logged to prevent cluttering the activity log
+  // The quick note is saved but doesn't create a history entry
 
   // Check if activities are being added, edited, or deleted
   if (payload.activities && Array.isArray(payload.activities)) {

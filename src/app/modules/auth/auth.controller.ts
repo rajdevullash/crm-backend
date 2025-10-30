@@ -91,13 +91,29 @@ const logoutUser = catchAsync(async (req: Request, res: Response) => {
 //update user
 const updateUser = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const user = (req as any).user; // Get the authenticated user from the auth middleware
+
+  console.log('Update user request received for ID:', id);
+  console.log('Request body:', req.body);
+  console.log('Request file:', req.file);
+
+  // Security check: Representatives can only update their own profile
+  if (user?.role === 'representative' && user?.userId !== id) {
+    return res.status(httpStatus.FORBIDDEN).json({
+      success: false,
+      message: 'You can only update your own profile',
+    });
+  }
 
   const profileImage = req.file ? `/uploads/profileImages/${req.file.filename}` : undefined;
+  console.log('Profile image path:', profileImage);
 
   const payload = {
     ...req.body,
     ...(profileImage && { profileImage }),
   };
+
+  console.log('Final payload to be updated:', payload);
 
   const result = await AuthService.updateUser(id, payload);
 

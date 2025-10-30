@@ -7,6 +7,7 @@ import globalErrorHandler from './app/middlewares/globalErrorHandler';
 import routes from './app/routes';
 import { Server as SocketIOServer } from 'socket.io';
 import cookieParser from 'cookie-parser';
+import path from 'path';
 const app: Application = express();
 
 // Allow all origins
@@ -21,6 +22,9 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+console.log('Static files served from:', path.join(__dirname, '../uploads'));
 
 app.use('/api/v1', routes);
 

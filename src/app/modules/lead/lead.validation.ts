@@ -9,9 +9,9 @@ import { z } from "zod";
 // -----------------------------
 const createLeadValidationSchema = z.object({
   title: z.string().min(1, "Title is required"),
-  name: z.string().min(1, "Name is required"),
+  name: z.string().optional().or(z.literal("")),
   email: z.string().email("Invalid email address").optional().or(z.literal("")),
-  phone: z.string().optional(),
+  phone: z.string().min(1, "Phone number is required"),
   source: z.string().optional(),
   stage: z
     .string()

@@ -5,7 +5,7 @@ export const authFilterableFields = [
   'role',
   'email',
   'name',
-  'phoneNumber',
+  'phone',
   'address',
   'status',
   'createdAt',
@@ -15,6 +15,6 @@ export const authFilterableFields = [
 export const authSearchableFields = [
   'email',
   'name',
-  'phoneNumber',
+  'phone',
   'address',
 ];
