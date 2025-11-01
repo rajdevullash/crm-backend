@@ -11,9 +11,6 @@ import path from 'path';
 const app: Application = express();
 
 // Allow all origins
-app.use(cors());
-
-// Or, explicitly set it like this:
 app.use(cors({ origin: '*' }));
 
 app.use(cookieParser());

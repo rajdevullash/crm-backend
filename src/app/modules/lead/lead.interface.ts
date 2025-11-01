@@ -38,6 +38,7 @@ export type ILead = {
   // Deal closing fields
   dealStatus?: 'open' | 'lost' | 'closing_requested' | 'closed';
   lostReason?: string;
+  dealRejectionReason?: string; // Reason for deal close request rejection
   closingRequestedAt?: Date;
   closedAt?: Date;
   closedBy?: mongoose.Types.ObjectId;

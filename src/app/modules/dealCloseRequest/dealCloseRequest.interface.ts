@@ -13,6 +13,7 @@ export type IDealCloseRequest = {
   incentiveAmount?: number; // Amount in BDT
   incentiveCurrency?: string; // Always 'BDT' for incentive payment
   notes?: string;
+  previousStage?: mongoose.Types.ObjectId; // Stage the lead was in before requesting to close
   _id?: any;
   createdAt?: any;
   updatedAt?: any;

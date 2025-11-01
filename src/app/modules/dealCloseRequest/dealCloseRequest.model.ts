@@ -20,6 +20,7 @@ const dealCloseRequestSchema = new Schema<IDealCloseRequest>(
     incentiveAmount: { type: Number }, // Amount in BDT
     incentiveCurrency: { type: String, default: 'BDT' }, // Always BDT for incentive payment
     notes: { type: String },
+    previousStage: { type: Schema.Types.ObjectId, ref: 'Stage' }, // Stage the lead was in before requesting to close
   },
   {
     timestamps: true,

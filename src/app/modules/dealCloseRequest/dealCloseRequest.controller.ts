@@ -5,6 +5,8 @@ import sendResponse from '../../../shared/sendResponse';
 import { DealCloseRequestService } from './dealCloseRequest.service';
 import pick from '../../../shared/pick';
 import { dealCloseRequestFilterableFields } from './dealCloseRequest.constant';
+import { emitLeadEvent } from '../socket/socketService';
+import { Lead } from '../lead/lead.model';
 
 // Create close request
 const createCloseRequest = catchAsync(async (req: Request, res: Response) => {
@@ -112,6 +114,69 @@ const rejectCloseRequest = catchAsync(async (req: Request, res: Response) => {
     adminId,
     rejectionReason
   );
+
+  console.log('✅ Reject close request result:', {
+    id: result._id,
+    status: result.status,
+    rejectionReason: result.rejectionReason,
+    hasRejectedBy: !!result.rejectedBy,
+  });
+
+  // Get the updated lead to emit socket event
+  // result.lead could be either ObjectId or populated object
+  const leadId = result.lead?._id || result.lead;
+  const updatedLead = await Lead.findById(leadId).populate('stage').populate('assignedTo');
+  
+  // Emit socket event for lead stage restoration
+  if (updatedLead) {
+    console.log('🔄 Emitting socket event for deal close rejection');
+    
+    const targetRooms = [
+      'role_admin',
+      'role_super_admin',
+      'role_representative',
+    ];
+
+    // Notify the assigned representative specifically if lead is assigned
+    const getAssignedToId = (assignedTo: any): string | null => {
+      if (!assignedTo) return null;
+      if (assignedTo._id) {
+        return assignedTo._id.toString();
+      }
+      return assignedTo.toString();
+    };
+
+    const assignedToId = getAssignedToId(updatedLead.assignedTo);
+    if (assignedToId) {
+      targetRooms.push(`user_${assignedToId}`);
+    }
+
+    // Notify the creator as well
+    const createdById = updatedLead.createdBy 
+      ? updatedLead.createdBy.toString() 
+      : null;
+    if (createdById) {
+      targetRooms.push(`user_${createdById}`);
+    }
+
+    emitLeadEvent('lead:deal_rejected', {
+      message: `Deal closing request rejected for "${updatedLead.name}"`,
+      lead: {
+        _id: updatedLead._id,
+        name: updatedLead.name,
+        title: updatedLead.title,
+        stage: updatedLead.stage,
+        dealStatus: updatedLead.dealStatus,
+      },
+      rejectedBy: {
+        id: req.user?.userId,
+        name: req.user?.name,
+        role: req.user?.role,
+      },
+      rejectionReason,
+      timestamp: new Date().toISOString(),
+    }, targetRooms);
+  }
 
   sendResponse(res, {
     statusCode: httpStatus.OK,

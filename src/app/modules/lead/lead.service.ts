@@ -12,6 +12,8 @@ import { Lead } from './lead.model';
 import { User } from '../auth/auth.model';
 import { Stage } from '../stage/stage.model';
 import { Task } from '../task/task.model';
+import { DealCloseRequest } from '../dealCloseRequest/dealCloseRequest.model';
+import { Notification } from '../notification/notification.model';
 
 const createLead = async (payload: ILead): Promise<ILead | null> => {
   // Validate userId
@@ -740,7 +742,22 @@ const deleteLead = async (id: string): Promise<ILead | null> => {
   
   console.log(`Deleted ${deletedTasks.deletedCount} associated tasks`);
 
-  // Step 4: Delete the lead
+  // Step 4: Delete associated DealCloseRequest records
+  const deletedCloseRequests = await DealCloseRequest.deleteMany(
+    { lead: existingLead._id }
+  );
+  
+  console.log(`Deleted ${deletedCloseRequests.deletedCount} associated deal close requests`);
+
+  // Step 5: Delete associated notifications (notifications related to this lead)
+  const deletedNotifications = await Notification.deleteMany({
+    entityType: 'Lead',
+    entityId: existingLead._id,
+  });
+  
+  console.log(`Deleted ${deletedNotifications.deletedCount} associated notifications`);
+
+  // Step 6: Delete the lead
   const deletedLead = await Lead.findOneAndDelete(
     { _id: id }
   );
@@ -750,6 +767,9 @@ const deleteLead = async (id: string): Promise<ILead | null> => {
   }
 
   console.log('✅ Lead deletion completed successfully');
+  console.log(`   - Tasks deleted: ${deletedTasks.deletedCount}`);
+  console.log(`   - Deal close requests deleted: ${deletedCloseRequests.deletedCount}`);
+  console.log(`   - Notifications deleted: ${deletedNotifications.deletedCount}`);
 
   return deletedLead;
 };

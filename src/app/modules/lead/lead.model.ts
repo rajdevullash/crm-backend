@@ -81,6 +81,7 @@ const leadSchema = new Schema<ILead>(
       default: 'open'
     },
     lostReason: { type: String },
+    dealRejectionReason: { type: String }, // Reason for deal close request rejection
     closingRequestedAt: { type: Date },
     closedAt: { type: Date },
     closedBy: { type: Schema.Types.ObjectId, ref: 'User' },

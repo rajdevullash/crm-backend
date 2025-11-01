@@ -16,8 +16,8 @@ const createCloseRequest = async (
   leadId: string,
   representativeId: string
 ): Promise<IDealCloseRequest> => {
-  // Check if lead exists
-  const lead = await Lead.findById(leadId);
+  // Check if lead exists and populate stage to get the current stage
+  const lead = await Lead.findById(leadId).populate('stage');
   if (!lead) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Lead not found');
   }
@@ -40,18 +40,27 @@ const createCloseRequest = async (
     throw new ApiError(httpStatus.FORBIDDEN, 'You are not assigned to this lead');
   }
 
-  // Create close request
+  // Get the current stage (previous stage before moving to Won/deal closing)
+  // This will be used to restore the lead if the request is rejected
+  // Handle both populated and non-populated stage
+  const previousStageId = lead.stage 
+    ? (lead.stage._id ? lead.stage._id : lead.stage)
+    : null;
+
+  // Create close request with previous stage information
   const closeRequest = await DealCloseRequest.create({
     lead: leadId,
     representative: representativeId,
     requestedAt: new Date(),
     status: 'pending',
+    previousStage: previousStageId,
   });
 
-  // Update lead status
+  // Update lead status and clear any previous rejection reason
   await Lead.findByIdAndUpdate(leadId, {
     dealStatus: 'closing_requested',
     closingRequestedAt: new Date(),
+    dealRejectionReason: undefined, // Clear previous rejection reason if resubmitted
   });
 
   // Add to history
@@ -240,6 +249,51 @@ const approveCloseRequest = async (
     console.log(`Incentive earned: ৳${incentiveAmount.toFixed(2)} BDT for representative ${representative.name}`);
   }
 
+  // Update representative's convertedLeads array when deal is approved
+  if (representative && closeRequest.lead) {
+    console.log('Adding lead to representative convertedLeads array');
+    
+    // Migrate old data structure if convertedLeads is not an array
+    if (!Array.isArray(representative.convertedLeads)) {
+      console.log('Converting convertedLeads from number to array...');
+      await User.findOneAndUpdate(
+        { _id: representative._id },
+        { $set: { convertedLeads: [] } },
+        { new: true }
+      );
+      representative.convertedLeads = [];
+    }
+    
+    // Check if this lead is already counted in convertedLeads
+    const isAlreadyCounted = representative.convertedLeads?.some(
+      (leadEntry: any) => {
+        const leadId = typeof leadEntry === 'object' && leadEntry._id 
+          ? leadEntry._id.toString() 
+          : leadEntry?.toString();
+        return leadId === closeRequest.lead.toString();
+      }
+    );
+
+    if (!isAlreadyCounted) {
+      console.log(`Adding lead ${closeRequest.lead} to converted leads for representative: ${representative.name}`);
+      
+      // Add the lead to convertedLeads array
+      await User.findOneAndUpdate(
+        { _id: representative._id },
+        { 
+          $push: { 
+            convertedLeads: closeRequest.lead 
+          }
+        },
+        { new: true }
+      );
+      
+      console.log('Successfully tracked lead conversion for representative');
+    } else {
+      console.log('Lead already counted in converted leads for representative');
+    }
+  }
+
   return closeRequest;
 };
 
@@ -263,19 +317,47 @@ const rejectCloseRequest = async (
   closeRequest.rejectedBy = adminId as any;
   closeRequest.rejectedAt = new Date();
   closeRequest.rejectionReason = rejectionReason;
+  
+  console.log('💾 Saving rejection reason to database:', {
+    requestId: closeRequest._id,
+    rejectionReason: closeRequest.rejectionReason,
+    rejectedBy: adminId,
+  });
+  
   await closeRequest.save();
+  
+  console.log('✅ Rejection reason saved successfully');
 
-  // Update lead status back to open
-  await Lead.findByIdAndUpdate(closeRequest.lead, {
+  // Get the lead to check current stage and restore previous stage
+  const lead = await Lead.findById(closeRequest.lead);
+  if (!lead) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'Lead not found');
+  }
+
+  // Update lead status back to open and store rejection reason
+  const updateData: any = {
     dealStatus: 'open',
     closingRequestedAt: undefined,
+    dealRejectionReason: rejectionReason, // Store rejection reason in lead
+  };
+
+  // Restore the lead to its previous stage (the stage it was in before requesting to close)
+  // If previousStage exists in the close request, use it; otherwise keep current stage
+  if (closeRequest.previousStage) {
+    updateData.stage = closeRequest.previousStage;
+    console.log(`🔄 Restoring lead to previous stage: ${closeRequest.previousStage}`);
+  } else {
+    // Fallback: if previousStage is not stored, keep the current stage
+    // This handles cases where previousStage wasn't stored (backward compatibility)
+    console.log('⚠️ No previous stage stored in close request, keeping current stage');
+  }
+
+  console.log('💾 Updating lead with rejection reason:', {
+    leadId: closeRequest.lead,
+    dealRejectionReason: updateData.dealRejectionReason,
   });
 
-  // If you maintain a separate Stage model/collection, import it and update the stage here.
-  const lostStage = await Stage.findOne({ title: /lost/i });
-  if (lostStage) {
-    await Lead.findByIdAndUpdate(closeRequest.lead, { stage: lostStage._id });
-  }
+  await Lead.findByIdAndUpdate(closeRequest.lead, updateData);
 
   // Add to history
   await Lead.findByIdAndUpdate(closeRequest.lead, {
@@ -284,12 +366,30 @@ const rejectCloseRequest = async (
         action: 'deal_close_rejected',
         changedBy: adminId,
         timestamp: new Date(),
-        description: `Close request rejected. Reason: ${rejectionReason}`,
+        description: `Close request rejected by admin. Reason: ${rejectionReason}. Lead restored to previous stage.`,
       },
     },
   });
 
-  return closeRequest;
+  // Populate the close request before returning
+  const populatedCloseRequest = await DealCloseRequest.findById(closeRequest._id)
+    .populate('lead')
+    .populate('representative', 'name email profileImage incentivePercentage')
+    .populate('approvedBy', 'name email')
+    .populate('rejectedBy', 'name email');
+
+  if (!populatedCloseRequest) {
+    throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Failed to fetch updated close request');
+  }
+
+  console.log('📤 Returning populated close request:', {
+    id: populatedCloseRequest._id,
+    status: populatedCloseRequest.status,
+    rejectionReason: populatedCloseRequest.rejectionReason,
+    rejectedBy: populatedCloseRequest.rejectedBy,
+  });
+
+  return populatedCloseRequest;
 };
 
 // Delete close request (when moving lead out of Won stage within grace period)

@@ -251,7 +251,17 @@ const getAllUsers = async (
       $match: whereConditions,
     },
     
-    // Lookup leads assigned to each user (representative)
+    // Lookup leads assigned to each user (representative) - keep leads array for counting
+    {
+      $lookup: {
+        from: 'leads',
+        localField: '_id',
+        foreignField: 'assignedTo',
+        as: 'assignedLeads',
+      },
+    },
+    
+    // Lookup leads again to unwind for activities (need separate lookup for unwinding)
     {
       $lookup: {
         from: 'leads',
@@ -289,6 +299,8 @@ const getAllUsers = async (
         address: { $first: '$address' },
         profileImage: { $first: '$profileImage' },
         incentivePercentage: { $first: '$incentivePercentage' },
+        assignedLeads: { $first: '$assignedLeads' }, // Keep assignedLeads array for counting
+        convertedLeads: { $first: '$convertedLeads' },
         createdAt: { $first: '$createdAt' },
         updatedAt: { $first: '$updatedAt' },
         
@@ -297,9 +309,26 @@ const getAllUsers = async (
       },
     },
     
-    // Add activities counts with date-only comparison for overdue
+    // Add fields: calculate totalLeads count and activities counts
     {
       $addFields: {
+        // Calculate totalLeads from assignedLeads array count
+        totalLeads: {
+          $cond: {
+            if: { $isArray: "$assignedLeads" },
+            then: { $size: "$assignedLeads" },
+            else: 0
+          }
+        },
+        
+        // Calculate convertedLeads count
+        convertedLeadsCount: {
+          $cond: {
+            if: { $isArray: "$convertedLeads" },
+            then: { $size: "$convertedLeads" },
+            else: 0
+          }
+        },
         completedActivities: {
           $size: {
             $filter: {
@@ -390,11 +419,12 @@ const getAllUsers = async (
       },
     },
     
-    // Remove password and activities array from output
+    // Remove password, activities array, and assignedLeads array from output
     {
       $project: {
         password: 0,
         activities: 0,
+        assignedLeads: 0, // Remove assignedLeads array, keep only totalLeads count
       },
     },
     

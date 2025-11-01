@@ -484,10 +484,35 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
     // Lead moved to different stage
     console.log('🎯 Lead moved to different stage, emitting socket event');
     
-    const targetRooms = 
-      userRole === 'representative' 
-        ? ['role_representative']
-        : ['role_admin', 'role_super_admin', 'role_representative'];
+    // Always notify all admins, super admins, and representatives when a lead moves
+    // This ensures admins see updates when representatives move leads
+    const targetRooms = [
+      'role_admin',
+      'role_super_admin', 
+      'role_representative',
+    ];
+
+    // Also notify the assigned representative specifically if lead is assigned
+    const getAssignedToId = (assignedTo: any): string | null => {
+      if (!assignedTo) return null;
+      if (assignedTo._id) {
+        return assignedTo._id.toString();
+      }
+      return assignedTo.toString();
+    };
+
+    const assignedToId = getAssignedToId(result.assignedTo);
+    if (assignedToId) {
+      targetRooms.push(`user_${assignedToId}`);
+    }
+
+    // Notify the creator as well
+    const createdById = result.createdBy?._id 
+      ? result.createdBy._id.toString() 
+      : result.createdBy?.toString() || null;
+    if (createdById) {
+      targetRooms.push(`user_${createdById}`);
+    }
     
     emitLeadEvent('leads:moved', {
       message: 'Lead moved to different stage',
@@ -497,17 +522,35 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
         newStageId,
         lead: result,
       },
+      movedBy: {
+        id: req.user?.userId,
+        name: req.user?.name,
+        role: req.user?.role,
+      },
       timestamp: new Date().toISOString(),
     }, targetRooms);
   }
 
   // Check if lead assignment changed and send email to newly assigned user
-  const oldAssignedTo = existingLead?.assignedTo?.toString();
-  const newAssignedTo = result?.assignedTo?.toString();
+  // Handle both populated and non-populated assignedTo
+  // If populated, assignedTo is a user object with _id property
+  // If not populated, assignedTo is just an ObjectId
+  const getAssignedToId = (assignedTo: any): string | null => {
+    if (!assignedTo) return null;
+    // Check if it's populated (has _id property) or is an ObjectId
+    if (assignedTo._id) {
+      return assignedTo._id.toString();
+    }
+    // It's an ObjectId, convert to string
+    return assignedTo.toString();
+  };
 
-  if (result && newAssignedTo && oldAssignedTo !== newAssignedTo) {
+  const oldAssignedToId = getAssignedToId(existingLead?.assignedTo);
+  const newAssignedToId = getAssignedToId(result?.assignedTo);
+
+  if (result && newAssignedToId && oldAssignedToId !== newAssignedToId) {
     try {
-      const assignedUser = await User.findById(newAssignedTo).select('name email');
+      const assignedUser = await User.findById(newAssignedToId).select('name email');
       const updater = await User.findById(requestedUser).select('name');
       
       if (assignedUser && updater) {
@@ -523,6 +566,50 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
           budget: result.budget,
         });
       }
+
+      // Emit socket event for lead assignment change
+      console.log('👤 Lead assignment changed, emitting socket event');
+      console.log('   Old assignee:', oldAssignedToId);
+      console.log('   New assignee:', newAssignedToId);
+      
+      const targetRooms = [
+        `user_${newAssignedToId}`, // The newly assigned representative
+        'role_admin', // All admins
+        'role_super_admin',
+      ];
+
+      // If there was a previous assignee, notify them too
+      if (oldAssignedToId && oldAssignedToId !== newAssignedToId) {
+        targetRooms.push(`user_${oldAssignedToId}`);
+      }
+
+      // Prepare lead data for socket event
+      const leadData = {
+        _id: result._id,
+        title: result.title,
+        name: result.name,
+        email: result.email,
+        phone: result.phone,
+        source: result.source,
+        assignedTo: newAssignedToId,
+        stage: result.stage,
+        createdBy: result.createdBy,
+        createdAt: result.createdAt,
+        updatedAt: result.updatedAt,
+      };
+
+      emitLeadEvent('lead:assigned', {
+        message: `Lead "${result.name}" has been assigned`,
+        lead: leadData,
+        oldAssignedTo: oldAssignedToId,
+        newAssignedTo: newAssignedToId,
+        assignedBy: {
+          id: req.user?.userId,
+          name: req.user?.name,
+          role: req.user?.role,
+        },
+        timestamp: new Date().toISOString(),
+      }, targetRooms);
     } catch (error) {
       console.error('Error sending lead assignment email:', error);
       // Continue execution even if email fails
@@ -542,8 +629,61 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
 const deleteLead = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   
+  // Get the lead before deleting to emit socket event
+  const existingLead = await LeadService.getSpecificLead(id);
+  
   // Now delete the lead
   await LeadService.deleteLead(id);
+  
+  // Emit socket event for lead deletion
+  if (existingLead) {
+    console.log('🗑️ Lead deleted, emitting socket event');
+    
+    const targetRooms = [
+      'role_admin', // All admins
+      'role_super_admin',
+      'role_representative', // All representatives
+    ];
+
+    // If lead was assigned to someone, notify them specifically
+    const getAssignedToId = (assignedTo: any): string | null => {
+      if (!assignedTo) return null;
+      if (assignedTo._id) {
+        return assignedTo._id.toString();
+      }
+      return assignedTo.toString();
+    };
+
+    const assignedToId = getAssignedToId(existingLead.assignedTo);
+    if (assignedToId) {
+      targetRooms.push(`user_${assignedToId}`);
+    }
+
+    // If lead had a creator, notify them
+    const createdById = existingLead.createdBy?._id 
+      ? existingLead.createdBy._id.toString() 
+      : existingLead.createdBy?.toString() || null;
+    if (createdById) {
+      targetRooms.push(`user_${createdById}`);
+    }
+
+    emitLeadEvent('lead:deleted', {
+      message: `Lead "${existingLead.name}" has been deleted`,
+      leadId: id,
+      lead: {
+        _id: existingLead._id,
+        name: existingLead.name,
+        title: existingLead.title,
+      },
+      deletedBy: {
+        id: req.user?.userId,
+        name: req.user?.name,
+        role: req.user?.role,
+      },
+      timestamp: new Date().toISOString(),
+    }, targetRooms);
+  }
+  
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

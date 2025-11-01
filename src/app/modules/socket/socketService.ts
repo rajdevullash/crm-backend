@@ -10,7 +10,11 @@ let io: SocketIOServer;
 export const initializeSocket = (server: HTTPServer) => {
   io = new SocketIOServer(server, {
     cors: {
-      origin: ["http://localhost:3000", "https://crm-datapollex.vercel.app"],
+      origin: [
+        "http://localhost:3000", 
+        "https://crm-datapollex.vercel.app",
+        "https://crm-frontend-two-indol.vercel.app"
+      ],
       methods: ["GET", "POST"],
       credentials: true,
     },
@@ -46,9 +50,29 @@ export const initializeSocket = (server: HTTPServer) => {
     // optional: join user-based and role-based rooms
     const user = socket.data.user;
     if (user) {
-      socket.join(`user_${user.userId}`);
-      socket.join(`role_${user.role}`);
+      const userRoom = `user_${user.userId}`;
+      const roleRoom = `role_${user.role}`;
+      socket.join(userRoom);
+      socket.join(roleRoom);
+      
+      // Verify rooms were joined (check immediately after join)
+      setTimeout(() => {
+        const userRoomSockets = io.sockets.adapter.rooms.get(userRoom);
+        const roleRoomSockets = io.sockets.adapter.rooms.get(roleRoom);
+        console.log(`✅ User ${user.email} (${user.role}) joined rooms:`);
+        console.log(`   - ${userRoom}: ${userRoomSockets?.size || 0} socket(s)`);
+        console.log(`   - ${roleRoom}: ${roleRoomSockets?.size || 0} socket(s)`);
+      }, 100);
+    } else {
+      console.log("⚠️ Socket connected but no user data available");
     }
+
+    // Handle explicit room join request from frontend (backup)
+    socket.on("join:user", (data: { userId: string }) => {
+      const userRoom = `user_${data.userId}`;
+      socket.join(userRoom);
+      console.log(`🚪 Socket ${socket.id} explicitly joined room: ${userRoom}`);
+    });
 
     socket.on("disconnect", () => {
       console.log("🔌 Socket disconnected:", socket.id);
@@ -65,8 +89,36 @@ export const getIO = () => {
 export const emitTaskEvent = (event: string, data: any, targetRooms?: string[]) => {
   const socketIO = getIO();
   if (targetRooms?.length) {
-    targetRooms.forEach((room) => socketIO.to(room).emit(event, data));
+    console.log(`🔊 Emitting ${event} to rooms:`, targetRooms);
+    let hasEmptyRooms = false;
+    
+    targetRooms.forEach((room) => {
+      // Check room membership using adapter
+      const roomSockets = socketIO.sockets.adapter.rooms.get(room);
+      const socketCount = roomSockets ? roomSockets.size : 0;
+      
+      console.log(`  → Emitting to room: ${room} (${socketCount} socket(s) in room)`);
+      if (socketCount > 0 && roomSockets) {
+        console.log(`     Socket IDs:`, Array.from(roomSockets));
+      } else {
+        hasEmptyRooms = true;
+      }
+      
+      // Emit to room
+      socketIO.to(room).emit(event, data);
+    });
+    
+    // Fallback: if all rooms are empty, broadcast to all connected sockets
+    // This handles cases where room joining might have timing issues
+    if (hasEmptyRooms) {
+      const totalSockets = socketIO.sockets.sockets.size;
+      console.log(`⚠️  Some rooms were empty. Total connected sockets: ${totalSockets}`);
+      console.log(`   Broadcasting ${event} to all sockets as fallback`);
+      socketIO.emit(event, data);
+    }
   } else {
+    // Broadcast to all connected sockets if no rooms specified
+    console.log(`🔊 Broadcasting ${event} to all sockets`);
     socketIO.emit(event, data);
   }
 };
