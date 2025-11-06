@@ -72,7 +72,6 @@ const createLead = catchAsync(async (req: Request, res: Response) => {
     source: req.body.source === '' ? undefined : req.body.source,
     budget: req.body.budget === '' ? undefined : req.body.budget,
     currency: req.body.currency === '' ? undefined : req.body.currency,
-    followUpDate: req.body.followUpDate === '' ? undefined : req.body.followUpDate,
   };
 
   // ✅ Create lead

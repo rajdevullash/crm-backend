@@ -32,7 +32,6 @@ export type ILead = {
   }[] | null;        
   notes?: Note[];
   quickNote?: string; // Persistent quick note field
-  followUpDate?: string | null;
   activities?: any[];
   
   // Deal closing fields

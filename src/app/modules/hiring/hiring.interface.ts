@@ -32,7 +32,7 @@ export interface IApplication {
   coverLetter?: string;
   atsScore: number;
   extractedKeywords?: string[]; // Keywords extracted by ATS calculator
-  status: 'pending' | 'reviewed' | 'shortlisted' | 'rejected' | 'hired';
+  status: 'pending' | 'reviewed' | 'shortlisted' | 'rejected' | 'hired' | 'called' | 'meeting-scheduled' | 'task-assigned' | 'submitted' | 'meeting-done';
   appliedDate: Date;
   reviewedBy?: {
     id: string;

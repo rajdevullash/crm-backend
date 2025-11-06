@@ -32,17 +32,6 @@ const createLeadValidationSchema = z.object({
   currency: z.enum(['BDT', 'USD', 'EUR']).optional(),
   attachment: z.array(z.string()).optional(),
   notes: z.string().optional(),
-  followUpDate: z
-    .preprocess(
-      (val) =>
-        typeof val === "string" ||
-        typeof val === "number" ||
-        val instanceof Date
-          ? new Date(val)
-          : undefined,
-      z.date()
-    )
-    .optional(),
 });
 
 const updateLeadValidationSchema = createLeadValidationSchema.partial().extend({

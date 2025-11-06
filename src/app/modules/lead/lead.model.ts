@@ -98,7 +98,6 @@ const leadSchema = new Schema<ILead>(
         overdueNotificationSent: { type: Boolean, default: false }, // Track if overdue notification was shown
       }
     ],
-    followUpDate: { type: Date },
   },
   {
     timestamps: true,
