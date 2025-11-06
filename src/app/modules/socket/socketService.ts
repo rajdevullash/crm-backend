@@ -14,8 +14,12 @@ export const initializeSocket = (server: HTTPServer) => {
         "http://localhost:3000", 
         "https://crm-datapollex.vercel.app",
         "https://crm-frontend-two-indol.vercel.app",
-        "https://crm-frontend-8lvn.onrender.com"
-      ],
+        "https://crm-frontend-8lvn.onrender.com",
+        "https://app.datapollex.com",
+        "https://api.datapollex.com",
+        "https://www.app.datapollex.com",
+        "https://www.api.datapollex.com"
+        ],
       methods: ["GET", "POST"],
       credentials: true,
     },

@@ -10,8 +10,26 @@ import cookieParser from 'cookie-parser';
 import path from 'path';
 const app: Application = express();
 
-// Allow all origins
-app.use(cors({ origin: '*' }));
+// Allowed origins list
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://crm-datapollex.vercel.app",
+  "https://crm-frontend-two-indol.vercel.app",
+  "https://crm-frontend-8lvn.onrender.com",
+  "https://app.datapollex.com",
+  "https://api.datapollex.com",
+  "https://www.app.datapollex.com",
+  "https://www.api.datapollex.com"
+];
+
+// Configure CORS properly by passing a single options object.
+// origin can be an array of allowed origins or a function for dynamic checks.
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
 
 app.use(cookieParser());
 
