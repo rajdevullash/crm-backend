@@ -917,13 +917,13 @@ const getAllActivities = async (query: Record<string, unknown>): Promise<IGeneri
   const { skip, limit: pageLimit } = paginationResult;
   const finalLimit = pageLimit || 20; // Ensure it's always a number
 
-  // Fetch all leads with activities
+  // Fetch all leads with activities and history
   const leads = await Lead.find(whereConditions)
     .populate('stage')
     .populate('assignedTo')
     .populate('activities.addedBy')
     .populate('activities.completedBy')
-    .select('title name activities assignedTo stage')
+    .select('title name activities assignedTo stage history')
     .lean();
 
   // Extract and flatten all activities from leads
@@ -931,7 +931,66 @@ const getAllActivities = async (query: Record<string, unknown>): Promise<IGeneri
   
   leads.forEach(lead => {
     if (lead.activities && lead.activities.length > 0) {
-      lead.activities.forEach((activity: any) => {
+      // Create a map of activity_added history entries by matching description/date
+      const activityAddedHistoryMap = new Map();
+      if (lead.history && lead.history.length > 0) {
+        lead.history.forEach((historyEntry: any) => {
+          if (historyEntry.action === 'activity_added') {
+            // Extract date from description to match with activity
+            const description = historyEntry.description || '';
+            const dateMatch = description.match(/([A-Z][a-z]+)\s+(\d{1,2}),\s+(\d{4})|(\d{4})-(\d{2})-(\d{2})/);
+            if (dateMatch) {
+              // Use description as key (contains activity type and date)
+              activityAddedHistoryMap.set(description, historyEntry);
+            }
+          }
+        });
+      }
+      
+      lead.activities.forEach((activity: any, activityIndex: number) => {
+        // Try to find matching history entry for this activity
+        let overdueNotificationSent = false;
+        let historyId: string | null = null;
+        
+        // Match by activity date and type
+        const activityDate = activity.type === 'meeting' && activity.meetingDate 
+          ? new Date(activity.meetingDate)
+          : new Date(activity.date);
+        
+        // Format date to match history description format
+        const formattedDate = activityDate.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+        
+        // Try to find matching history entry
+        const activityType = activity.type ? activity.type.charAt(0).toUpperCase() + activity.type.slice(1) : 'Activity';
+        const expectedDescription = `${activityType} has been scheduled for ${formattedDate}`;
+        
+        // Check if we have a matching history entry
+        // Also try to match by activity creation order (if multiple activities on same date)
+        const activityAddedHistories = Array.from(activityAddedHistoryMap.values()).filter((h: any) => {
+          return h.description === expectedDescription || 
+                 (h.description && h.description.includes(formattedDate) && h.description.includes(activityType));
+        });
+        
+        // If multiple matches, try to find the one that matches this activity's index
+        // (activities are added in order, so we can match by order)
+        if (activityAddedHistories.length > 0) {
+          // Sort by timestamp to match order
+          activityAddedHistories.sort((a: any, b: any) => {
+            return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+          });
+          
+          // Try to match by activity index (assuming activities are in same order as history entries)
+          const matchingHistory = activityAddedHistories[activityIndex] || activityAddedHistories[0];
+          if (matchingHistory) {
+            overdueNotificationSent = matchingHistory.overdueNotificationSent || false;
+            historyId = matchingHistory._id ? matchingHistory._id.toString() : null;
+          }
+        }
+        
         allActivities.push({
           ...activity,
           leadId: lead._id,
@@ -939,6 +998,8 @@ const getAllActivities = async (query: Record<string, unknown>): Promise<IGeneri
           leadName: lead.name,
           assignedTo: lead.assignedTo,
           stage: lead.stage,
+          overdueNotificationSent, // Include overdue notification status
+          historyId, // Include historyId for marking notification as sent
         });
       });
     }
