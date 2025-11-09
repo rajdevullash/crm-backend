@@ -895,8 +895,8 @@ const reorderLeads = async (leadOrders: { leadId: string; order: number }[]): Pr
 };
 
 // Get all activities from all leads (for global activity log)
-const getAllActivities = async (query: Record<string, unknown>): Promise<any> => {
-  const { userId, role } = query;
+const getAllActivities = async (query: Record<string, unknown>): Promise<IGenericResponse<any[]>> => {
+  const { userId, role, page, limit } = query;
 
   // Build query conditions based on user role
   const whereConditions: any = {};
@@ -907,6 +907,15 @@ const getAllActivities = async (query: Record<string, unknown>): Promise<any> =>
     whereConditions.assignedTo = userId;
   }
   // Admin and super_admin see all activities
+
+  // Calculate pagination
+  const paginationOptions: IPaginationOptions = {
+    page: Number(page) || 1,
+    limit: Number(limit) || 20,
+  };
+  const paginationResult = paginationHelpers.calculatePagination(paginationOptions);
+  const { skip, limit: pageLimit } = paginationResult;
+  const finalLimit = pageLimit || 20; // Ensure it's always a number
 
   // Fetch all leads with activities
   const leads = await Lead.find(whereConditions)
@@ -937,12 +946,26 @@ const getAllActivities = async (query: Record<string, unknown>): Promise<any> =>
 
   // Sort activities by date (newest first)
   allActivities.sort((a, b) => {
-    const dateA = new Date(a.date).getTime();
-    const dateB = new Date(b.date).getTime();
+    // For meeting activities, use meetingDate; otherwise use date
+    const dateA = new Date(a.type === 'meeting' && a.meetingDate ? a.meetingDate : a.date).getTime();
+    const dateB = new Date(b.type === 'meeting' && b.meetingDate ? b.meetingDate : b.date).getTime();
     return dateB - dateA;
   });
 
-  return allActivities;
+  // Get total count before pagination
+  const total = allActivities.length;
+
+  // Apply pagination
+  const paginatedActivities = allActivities.slice(skip, skip + finalLimit);
+
+  return {
+    meta: {
+      page: paginationOptions.page || 1,
+      limit: finalLimit,
+      total,
+    },
+    data: paginatedActivities,
+  };
 };
 
 // Get recent activity notifications from lead history
