@@ -86,10 +86,12 @@ export const createLeadNotification = async (leadData: {
     });
 
     // Create notification (this already emits socket event)
+    // Format message: use name if available, otherwise just title
+    const namePart = leadData.name ? ` (${leadData.name})` : '';
     const notification = await NotificationService.createNotification({
       type: 'lead',
       title: 'New Lead Created',
-      message: `Lead "${leadData.title}" (${leadData.name}) has been created`,
+      message: `Lead "${leadData.title}"${namePart} has been created`,
       entityType: 'Lead',
       entityId: new mongoose.Types.ObjectId(leadData._id),
       triggeredBy: new mongoose.Types.ObjectId(leadData.createdBy),

@@ -142,6 +142,22 @@ const getAllUsers = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+//get all users for admin (no role filtering)
+const getAllUsersForAdmin = catchAsync(async (req: Request, res: Response) => {
+  const filters = pick(req.query, authFilterableFields);
+  const paginationOptions = pick(req.query, paginationFields);
+  const result = await AuthService.getAllUsersForAdmin(
+    filters,
+    paginationOptions,
+  );
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'All users fetched successfully',
+    data: result,
+  });
+});
+
 //get single user
 const getSingleUser = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -280,6 +296,7 @@ export const AuthController = {
   loginUser,
   refreshToken,
   getAllUsers,
+  getAllUsersForAdmin,
   getSingleUser,
   getProfile,
   updateUser,

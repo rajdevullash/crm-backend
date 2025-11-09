@@ -14,6 +14,13 @@ router.get(
   AuthController.getAllUsers
 )
 
+// Admin route to get all users regardless of role
+router.get(
+  '/admin/get-all-users',
+  auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN),
+  AuthController.getAllUsersForAdmin
+)
+
 router.get(
   '/single-user/:id',
   auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.REPRESENTATIVE),
@@ -28,7 +35,30 @@ router.get(
 
 router.patch(
   '/:id',
-  uploadProfileImage,
+  (req, res, next) => {
+    uploadProfileImage(req, res, (err: any) => {
+      if (err) {
+        // Handle multer errors (file size, file type, etc.)
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            success: false,
+            message: 'File size too large. Maximum size is 10MB',
+          });
+        }
+        if (err.message && (err.message.includes('JPG') || err.message.includes('PNG') || err.message.includes('WEBP') || err.message.includes('image'))) {
+          return res.status(400).json({
+            success: false,
+            message: err.message || 'Image format mismatch. Only JPG, JPEG, PNG, and WEBP formats are allowed',
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          message: err.message || 'Failed to upload image',
+        });
+      }
+      next();
+    });
+  },
   auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.REPRESENTATIVE),
   AuthController.updateUser
 )

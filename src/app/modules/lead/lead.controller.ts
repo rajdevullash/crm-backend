@@ -104,22 +104,9 @@ const createLead = catchAsync(async (req: Request, res: Response) => {
       targetRooms.push(`user_${result.assignedTo}`);
     }
 
-    emitTaskEvent(
-      'lead:created',
-      {
-        message: `New lead "${result.name}" added`,
-        lead: leadData,
-        user: {
-          id: req.user?.userId,
-          name: req.user?.name,
-          role: req.user?.role,
-        },
-        timestamp: new Date().toISOString(),
-      },
-      targetRooms,
-    );
-
-    // Create notification (this will emit socket event 'notification:new' automatically)
+    // Create notification first (this will emit socket event 'notification:new' automatically)
+    // Note: We don't need the separate emitTaskEvent for lead:created since createLeadNotification
+    // already creates the notification and emits notification:new event
     await createLeadNotification({
       _id: result._id.toString(),
       title: result.title,

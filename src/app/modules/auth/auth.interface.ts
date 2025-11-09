@@ -23,6 +23,7 @@ export type IUserLogin = {
 
 export type IUserLoginResponse = {
   user: {
+    userId: string;
     email: string;
     role: ENUM_USER_ROLE;
     name: string;

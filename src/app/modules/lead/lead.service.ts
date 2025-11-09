@@ -63,27 +63,8 @@ const createLead = async (payload: ILead): Promise<ILead | null> => {
   // Create lead
   const result = await Lead.create(leadDataWithHistory);
   
-  // Send notification if lead is assigned to someone during creation
-  if (payload.assignedTo) {
-    const assignedUser = await User.findById(payload.assignedTo);
-    const createdByUser = await User.findById(userId);
-    
-    // Only send notification if assigned to someone other than the creator
-    if (assignedUser && payload.assignedTo.toString() !== userId.toString()) {
-      await NotificationService.createNotification({
-        type: 'lead',
-        title: 'New Lead Assigned',
-        message: `${createdByUser?.name || 'Admin'} has assigned a new lead "${payload.title}" to you`,
-        recipients: [payload.assignedTo],
-        triggeredBy: new mongoose.Types.ObjectId(userId),
-        entityType: 'Lead',
-        entityId: result._id,
-        readBy: []
-      });
-      
-      console.log(`✅ Notification sent to ${assignedUser.name} for new lead assignment`);
-    }
-  }
+  // Note: Notification for lead creation is handled in the controller via createLeadNotification
+  // This prevents duplicate notifications when a lead is created with assignment
   
   return result;
 };

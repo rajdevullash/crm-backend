@@ -99,6 +99,7 @@ const loginUser = async (payload: IUserLogin): Promise<IUserLoginResponse> => {
 
   return {
     user: {
+      userId: user._id.toString(),
       email: user.email,
       role: user.role as ENUM_USER_ROLE,
       name: user.name,
@@ -162,6 +163,7 @@ const updateUser = async (
   Object.keys(payload).forEach((key) => {
     const value = payload[key as keyof IUser];
     if (value !== undefined && value !== null && value !== '') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       cleanPayload[key as keyof IUser] = value as any;
     }
   });
@@ -455,6 +457,84 @@ const getAllUsers = async (
   };
 };
 
+// Get all users for admin (no role filtering)
+const getAllUsersForAdmin = async (
+  filters: IAuthFilters,
+  paginationOptions: IPaginationOptions,
+): Promise<IGetAllUsersResponse> => {
+  const { searchTerm, ...filtersData } = filters;
+
+  const { page, limit, skip, sortBy, sortOrder } =
+    paginationHelpers.calculatePagination(paginationOptions);
+
+  const andConditions = [];
+
+  // Search needs $or for searching in specified fields
+  if (searchTerm) {
+    andConditions.push({
+      $or: authSearchableFields.map(field => ({
+        [field]: {
+          $regex: searchTerm,
+          $options: 'i',
+        },
+      })),
+    });
+  }
+  
+  // Filters needs $and to fullfill all the conditions
+  if (Object.keys(filtersData).length) {
+    andConditions.push({
+      $and: Object.entries(filtersData).map(([field, value]) => ({
+        [field]: value,
+      })),
+    });
+  }
+
+  // Dynamic Sort needs field to do sorting
+  const sortConditions: { [key: string]: 1 | -1 } = {};
+  if (sortBy && sortOrder) {
+    sortConditions[sortBy] = sortOrder === 'asc' ? 1 : -1;
+  }
+  
+  const whereConditions =
+    andConditions.length > 0 ? { $and: andConditions } : {};
+
+  const result = await User.aggregate([
+    {
+      $match: whereConditions,
+    },
+    {
+      $sort: sortConditions,
+    },
+    {
+      $facet: {
+        metadata: [{ $count: 'total' }],
+        data: [
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $project: {
+              password: 0,
+            },
+          },
+        ],
+      },
+    },
+  ]);
+
+  const total = result[0]?.metadata[0]?.total || 0;
+  const data = result[0]?.data || [];
+
+  return {
+    meta: {
+      page,
+      limit,
+      total,
+    },
+    data: data,
+  };
+};
+
 //get single user
 const getSingleUser = async (id: string): Promise<IUser | null> => {
   const user = await User.findById(id).select('-password');
@@ -490,6 +570,7 @@ export const AuthService = {
   getProfile,
   getSingleUser,
   getAllUsers,
+  getAllUsersForAdmin,
   logoutUser,
   updateUser,
   deleteUser,

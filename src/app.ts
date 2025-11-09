@@ -13,6 +13,10 @@ const app: Application = express();
 // Allowed origins list
 const allowedOrigins = [
   "http://localhost:3000",
+  "http://192.168.0.103:8081", // Mobile app (Expo) - old IP
+  "exp://192.168.0.103:8081", // Expo Go - old IP
+  "http://192.168.0.195:8081", // Mobile app (Expo) - new IP
+  "exp://192.168.0.195:8081", // Expo Go - new IP
   "https://crm-datapollex.vercel.app",
   "https://crm-frontend-two-indol.vercel.app",
   "https://crm-frontend-8lvn.onrender.com",

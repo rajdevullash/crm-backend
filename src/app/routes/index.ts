@@ -7,6 +7,7 @@ import { DashboardRoutes } from '../modules/dashboard/dashboard.route';
 import { NotificationRoutes } from '../modules/notification/notification.route';
 import { DealCloseRequestRoutes } from '../modules/dealCloseRequest/dealCloseRequest.route';
 import { HiringRoutes } from '../modules/hiring/hiring.route';
+import { PermissionRoutes } from '../modules/permission/permission.route';
 
 const router = express.Router();
 
@@ -42,6 +43,10 @@ const moduleRoutes = [
   {
     path: '/hiring',
     route: HiringRoutes,
+  },
+  {
+    path: '/permissions',
+    route: PermissionRoutes,
   }
 ];
 

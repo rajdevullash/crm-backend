@@ -15,7 +15,9 @@
     "seed:hr": "ts-node src/seed/hrSeed.ts",
     "seed:hr:force": "ts-node src/seed/hrSeed.ts --force",
     "seed:hiring": "ts-node src/seed/hiringSeed.ts",
-    "seed:hiring:force": "ts-node src/seed/hiringSeed.ts --force"
+    "seed:hiring:force": "ts-node src/seed/hiringSeed.ts --force",
+    "seed:permissions": "ts-node src/seed/permissionSeed.ts",
+    "seed:roles": "ts-node src/seed/roleSeed.ts"
   },
   "lint-staged": {
     "src/**/*.ts": "yarn lint-prettier"
