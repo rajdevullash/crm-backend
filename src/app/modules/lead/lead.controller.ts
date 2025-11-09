@@ -36,6 +36,7 @@ const createLead = catchAsync(async (req: Request, res: Response) => {
 
   // ✅ Extract authenticated user from token middleware
   const requestedUser = req.user?.userId;
+  const userRole = req.user?.role;
 
   // ✅ Handle notes safely
   const { notes } = req.body;
@@ -59,19 +60,34 @@ const createLead = catchAsync(async (req: Request, res: Response) => {
   }
 
   // ✅ Prepare final data object
+  // Helper function to clean up undefined/null string values
+  const cleanValue = (value: any) => {
+    if (value === '' || value === 'undefined' || value === 'null' || value === null || value === undefined) {
+      return undefined;
+    }
+    return value;
+  };
+
+  // ✅ Auto-assign lead to representative if they are creating it and no assignedTo is provided
+  let assignedToValue = cleanValue(req.body.assignedTo);
+  if (userRole === 'representative' && !assignedToValue && requestedUser) {
+    assignedToValue = requestedUser;
+    console.log(`Auto-assigning lead to representative: ${requestedUser}`);
+  }
+
   const data = {
     ...req.body,
     attachment: attachments,
     createdBy: requestedUser,
     notes: formattedNotes,
-    // ✅ Convert empty strings to undefined so service can handle defaults properly
-    stage: req.body.stage === '' || !req.body.stage ? undefined : req.body.stage,
-    assignedTo: req.body.assignedTo === '' || !req.body.assignedTo ? undefined : req.body.assignedTo,
-    email: req.body.email === '' ? undefined : req.body.email,
-    phone: req.body.phone === '' ? undefined : req.body.phone,
-    source: req.body.source === '' ? undefined : req.body.source,
-    budget: req.body.budget === '' ? undefined : req.body.budget,
-    currency: req.body.currency === '' ? undefined : req.body.currency,
+    // ✅ Convert empty strings and "undefined"/"null" strings to undefined so service can handle defaults properly
+    stage: cleanValue(req.body.stage),
+    assignedTo: assignedToValue,
+    email: cleanValue(req.body.email),
+    phone: req.body.phone === '' ? undefined : req.body.phone, // Phone is required, so only check empty string
+    source: cleanValue(req.body.source),
+    budget: cleanValue(req.body.budget),
+    currency: cleanValue(req.body.currency),
   };
 
   // ✅ Create lead
@@ -105,8 +121,6 @@ const createLead = catchAsync(async (req: Request, res: Response) => {
     }
 
     // Create notification first (this will emit socket event 'notification:new' automatically)
-    // Note: We don't need the separate emitTaskEvent for lead:created since createLeadNotification
-    // already creates the notification and emits notification:new event
     await createLeadNotification({
       _id: result._id.toString(),
       title: result.title,
@@ -114,6 +128,34 @@ const createLead = catchAsync(async (req: Request, res: Response) => {
       assignedTo: result.assignedTo?.toString(),
       createdBy: requestedUser,
     });
+
+    // Emit lead:created socket event to refresh leads list in real-time
+    // This ensures admins see new leads immediately when representatives create them
+    emitLeadEvent('lead:created', {
+      message: `New lead "${result.title}" created`,
+      lead: {
+        _id: result._id,
+        id: result._id,
+        title: result.title,
+        name: result.name,
+        email: result.email,
+        phone: result.phone,
+        source: result.source,
+        budget: result.budget,
+        currency: result.currency,
+        stage: result.stage,
+        assignedTo: result.assignedTo,
+        createdBy: result.createdBy,
+        createdAt: result.createdAt,
+        updatedAt: result.updatedAt,
+      },
+      createdBy: {
+        id: requestedUser,
+        name: req.user?.name,
+        role: req.user?.role,
+      },
+      timestamp: new Date().toISOString(),
+    }, targetRooms);
 
     // Send email to assigned user if lead is assigned to someone
     // Run in background (non-blocking)
@@ -369,7 +411,15 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
     try {
       const newActivity = JSON.parse(req.body.addActivity);
       newActivity.addedBy = requestedUser;
-      newActivity.date = new Date(newActivity.date);
+      
+      // For meeting activities, use meetingDate as the activity date if provided
+      if (newActivity.type === 'meeting' && newActivity.meetingDate) {
+        newActivity.date = new Date(newActivity.meetingDate);
+        // Also ensure meetingDate is a Date object
+        newActivity.meetingDate = new Date(newActivity.meetingDate);
+      } else {
+        newActivity.date = new Date(newActivity.date);
+      }
 
       // Add custom activity attachment URL if uploaded
       if (customActivityAttachmentUrl && newActivity.type === 'custom') {
@@ -416,12 +466,22 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
           activityUpdateData.customAttachment = customActivityAttachmentUrl;
         }
         
+        // For meeting activities, use meetingDate as the activity date if provided
+        let activityDate;
+        if (updatedActivity.type === 'meeting' && updatedActivity.meetingDate) {
+          activityDate = new Date(updatedActivity.meetingDate);
+          // Also ensure meetingDate is a Date object
+          activityUpdateData.meetingDate = new Date(updatedActivity.meetingDate);
+        } else {
+          activityDate = new Date(updatedActivity.date);
+        }
+        
         // Update the activity with new data
         formattedActivities[activityIndex] = {
           ...activityUpdateData,
           _id: existingId,
           addedBy: existingAddedBy,
-          date: new Date(updatedActivity.date),
+          date: activityDate,
         };
         console.log('Updated activity:', formattedActivities[activityIndex]);
       } else {
@@ -699,15 +759,22 @@ const reorderLeads = catchAsync(async (req: Request, res: Response) => {
   // Emit socket event to notify all connected clients about lead reordering
   console.log('📋 Leads reordered, emitting socket event');
   
-  // Target rooms based on user role
-  const targetRooms = 
-    userRole === 'representative' 
-      ? ['role_representative']
-      : ['role_admin', 'role_super_admin', 'role_representative'];
+  // Always notify all admins, super admins, and representatives when leads are reordered
+  // This ensures admins see updates when representatives reorder leads, and vice versa
+  const targetRooms = [
+    'role_admin',
+    'role_super_admin',
+    'role_representative',
+  ];
   
   emitLeadEvent('leads:reordered', {
     message: 'Leads reordered successfully',
     data: { leadOrders },
+    reorderedBy: {
+      id: req.user?.userId,
+      name: req.user?.name,
+      role: req.user?.role,
+    },
     timestamp: new Date().toISOString(),
   }, targetRooms);
 

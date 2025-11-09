@@ -54,9 +54,19 @@ const createLead = async (payload: ILead): Promise<ILead | null> => {
     description: 'Lead was created'
   };
 
+  // Clean up payload - remove undefined/null values to prevent validation errors
+  const cleanedPayload: any = {};
+  Object.keys(payload).forEach(key => {
+    const value = (payload as any)[key];
+    // Only include the field if it's not undefined, null, or the string "undefined"/"null"
+    if (value !== undefined && value !== null && value !== 'undefined' && value !== 'null') {
+      cleanedPayload[key] = value;
+    }
+  });
+
   // Add history to payload
   const leadDataWithHistory = {
-    ...payload,
+    ...cleanedPayload,
     history: [initialHistory]
   };
 
