@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import httpStatus from 'http-status';
 import { Secret } from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import config from '../../../config';
 import { ENUM_USER_ROLE } from '../../../enums/user';
 import ApiError from '../../../errors/ApiError';
@@ -555,12 +556,53 @@ const deleteUser = async (id: string): Promise<IUser | null> => {
 
 //get profile
 const getProfile = async (id: string): Promise<IUser | null> => {
-  const user = await User.findById(id).select('-password');
-  console.log('User Profile:', user);
-  if (!user) {
+  const userId = new mongoose.Types.ObjectId(id);
+  
+  // First get the user to check their role
+  const userDoc = await User.findById(userId).select('-password');
+  if (!userDoc) {
     throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
   }
-  return user;
+  
+  const isAdmin = userDoc.role === ENUM_USER_ROLE.ADMIN || userDoc.role === ENUM_USER_ROLE.SUPER_ADMIN;
+  
+  // Import Lead and DealCloseRequest models
+  const { Lead } = await import('../lead/lead.model');
+  const { DealCloseRequest } = await import('../dealCloseRequest/dealCloseRequest.model');
+  
+  let totalLeads = 0;
+  let convertedLeadsCount = 0;
+  
+  if (isAdmin) {
+    // For admin/super_admin: count all leads in system
+    totalLeads = await Lead.countDocuments({});
+    
+    // For admin/super_admin: count all approved close requests
+    convertedLeadsCount = await DealCloseRequest.countDocuments({ status: 'approved' });
+  } else {
+    // For representatives: count assigned leads
+    totalLeads = await Lead.countDocuments({ assignedTo: userId });
+    
+    // For representatives: count their approved close requests
+    convertedLeadsCount = await DealCloseRequest.countDocuments({
+      representative: userId,
+      status: 'approved',
+    });
+  }
+  
+  // Convert user document to plain object and add calculated stats
+  const user = userDoc.toObject() as any;
+  user.totalLeads = totalLeads;
+  user.convertedLeadsCount = convertedLeadsCount;
+  
+  console.log('User Profile with calculated stats:', {
+    userId: id,
+    role: user.role,
+    totalLeads,
+    convertedLeadsCount,
+  });
+  
+  return user as IUser;
 };
 
 export const AuthService = {

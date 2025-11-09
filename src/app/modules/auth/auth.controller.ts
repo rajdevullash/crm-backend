@@ -173,7 +173,7 @@ const getSingleUser = catchAsync(async (req: Request, res: Response) => {
 //get profile
 const getProfile = catchAsync(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const result = await AuthService.getSingleUser(userId);
+  const result = await AuthService.getProfile(userId);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

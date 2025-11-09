@@ -892,7 +892,8 @@ const getAllActivities = async (query: Record<string, unknown>): Promise<any> =>
   const whereConditions: any = {};
   
   // If representative, only show activities from their assigned leads
-  if (role === 'representative') {
+  // Only add assignedTo filter if userId is valid (not undefined, null, or "undefined" string)
+  if (role === 'representative' && userId && userId !== 'undefined' && userId !== 'null') {
     whereConditions.assignedTo = userId;
   }
   // Admin and super_admin see all activities
@@ -942,7 +943,8 @@ const getRecentActivityNotifications = async (query: Record<string, unknown>): P
   const whereConditions: any = {};
   
   // If representative, only show activities from their assigned leads
-  if (role === 'representative') {
+  // Only add assignedTo filter if userId is valid (not undefined, null, or "undefined" string)
+  if (role === 'representative' && userId && userId !== 'undefined' && userId !== 'null') {
     whereConditions.assignedTo = userId;
   }
   // Admin and super_admin see all activities
