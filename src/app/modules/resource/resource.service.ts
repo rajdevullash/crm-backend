@@ -75,10 +75,12 @@ const createResource = async (resourceData: Partial<IResource>, userId?: string,
       if (existingUserByEmail || existingUserByPhone) {
         // User already exists (by email or phone), just link it
         const existingUser = existingUserByEmail || existingUserByPhone;
-        resource.userId = existingUser._id?.toString();
-        await resource.save();
-        userLinked = true;
-        console.log(`✅ Linked existing user (${existingUser.email}) to resource: ${resource.name}`);
+        if (existingUser) {
+          resource.userId = existingUser._id?.toString();
+          await resource.save();
+          userLinked = true;
+          console.log(`✅ Linked existing user (${existingUser.email}) to resource: ${resource.name}`);
+        }
       } else {
         // User doesn't exist, create new user
         // Hash password (default password: 12345678)
@@ -209,7 +211,7 @@ const updateResource = async (
   // Check if this is the first update
   // First update = resource has never been updated before (updatedAt === createdAt or very close)
   // After first update, we should track all subsequent changes
-  const createdAt = new Date(resource.createdAt).getTime();
+  const createdAt = resource.createdAt ? new Date(resource.createdAt).getTime() : Date.now();
   const updatedAt = resource.updatedAt ? new Date(resource.updatedAt).getTime() : createdAt;
   const timeDifference = Math.abs(updatedAt - createdAt);
   const hasBeenUpdatedBefore = timeDifference > 5000; // More than 5 seconds difference means it was updated before
