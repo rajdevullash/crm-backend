@@ -29,7 +29,7 @@ const createLeadValidationSchema = z.object({
     .regex(/^[0-9a-fA-F]{24}$/, "Invalid user ID")
     .optional(),
   budget: z.number().optional(),
-  currency: z.enum(['BDT', 'USD', 'EUR']).optional(),
+  currency: z.enum(['BDT', 'USD', 'EUR', 'GBP', 'INR', 'JPY', 'AUD', 'CAD']).optional(),
   attachment: z.array(z.string()).optional(),
   notes: z.string().optional(),
 });

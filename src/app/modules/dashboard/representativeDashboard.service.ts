@@ -39,6 +39,9 @@ const getRepresentativeDashboardStats = async (representativeId: string) => {
     'EUR': 120,
     'GBP': 140,
     'INR': 1.32,
+    'JPY': 0.75,
+    'AUD': 72,
+    'CAD': 80,
   };
 
   // Get all leads assigned to representative

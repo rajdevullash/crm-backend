@@ -18,7 +18,7 @@ const leadSchema = new Schema<ILead>(
     budget: { type: Number },
     currency: { 
       type: String, 
-      enum: ['BDT', 'USD', 'EUR'],
+      enum: ['BDT', 'USD', 'EUR', 'GBP', 'INR', 'JPY', 'AUD', 'CAD'],
       default: 'USD'
     },
     attachment: [
