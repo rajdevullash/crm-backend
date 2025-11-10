@@ -281,6 +281,39 @@ const initializeDefaultPermissions = async () => {
       resource: 'application',
       description: 'Regenerate ATS score for applications',
     },
+    // HR Module - Resource Permissions
+    {
+      name: ENUM_PERMISSION.HR_RESOURCE_VIEW,
+      displayName: 'View Resources',
+      module: ENUM_MODULE.HR,
+      action: 'view',
+      resource: 'resource',
+      description: 'View employee resources',
+    },
+    {
+      name: ENUM_PERMISSION.HR_RESOURCE_CREATE,
+      displayName: 'Create Resources',
+      module: ENUM_MODULE.HR,
+      action: 'create',
+      resource: 'resource',
+      description: 'Create new employee resources',
+    },
+    {
+      name: ENUM_PERMISSION.HR_RESOURCE_EDIT,
+      displayName: 'Edit Resources',
+      module: ENUM_MODULE.HR,
+      action: 'edit',
+      resource: 'resource',
+      description: 'Edit employee resources',
+    },
+    {
+      name: ENUM_PERMISSION.HR_RESOURCE_DELETE,
+      displayName: 'Delete Resources',
+      module: ENUM_MODULE.HR,
+      action: 'delete',
+      resource: 'resource',
+      description: 'Delete employee resources',
+    },
     // Leads Module Permissions
     {
       name: ENUM_PERMISSION.LEADS_VIEW,

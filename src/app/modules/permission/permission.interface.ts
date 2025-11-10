@@ -15,6 +15,12 @@ export enum ENUM_PERMISSION {
   HR_APPLICATION_NOTES = 'hr_application_notes',
   HR_APPLICATION_REGENERATE_SCORE = 'hr_application_regenerate_score',
   
+  // HR Module - Resource Permissions
+  HR_RESOURCE_VIEW = 'hr_resource_view',
+  HR_RESOURCE_CREATE = 'hr_resource_create',
+  HR_RESOURCE_EDIT = 'hr_resource_edit',
+  HR_RESOURCE_DELETE = 'hr_resource_delete',
+  
   // Leads Module Permissions
   LEADS_VIEW = 'leads_view',
   LEADS_CREATE = 'leads_create',

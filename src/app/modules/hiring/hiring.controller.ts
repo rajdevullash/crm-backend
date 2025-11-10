@@ -346,6 +346,17 @@ const updateApplication = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   const user = (req as any).user;
 
+  // Get the current application to check previous status
+  const currentApplication = await Application.findById(id);
+  if (!currentApplication) {
+    return sendResponse(res, {
+      statusCode: 404,
+      success: false,
+      message: 'Application not found',
+      data: null,
+    });
+  }
+
   const updateData = { ...req.body };
 
   // If status is being updated, add reviewer info
@@ -370,6 +381,109 @@ const updateApplication = catchAsync(async (req: Request, res: Response) => {
       message: 'Application not found',
       data: null,
     });
+  }
+
+  // If status changed to 'hired', create a resource
+  if (req.body.status === 'hired' && currentApplication.status !== 'hired') {
+    try {
+      const { ResourceService } = await import('../resource/resource.service');
+      const { Job } = await import('./job.model');
+      
+      // Get job details for department
+      const job = await Job.findById(application.jobId);
+      
+      if (job) {
+        // Create resource from application data
+        // Note: Fields like nid, address, bankDetails, emergencyContact use placeholder values
+        // and should be updated later through the resource edit page
+        const resourceData: any = {
+          name: application.name,
+          email: application.email,
+          phone: application.phone,
+          department: job.department,
+          position: job.title,
+          joiningDate: new Date(),
+          workMode: 'on-site' as const, // Default, can be updated later
+          jobType: job.type === 'Internship' ? 'internship' as const : 'permanent' as const,
+          jobStatus: 'probation' as const, // Default status
+          salary: 0, // Set to 0 initially, will be updated later
+          // employeeId will be generated automatically in the service
+          // nid will use default "To be updated" from model
+          applicationId: application._id?.toString(),
+          // Provide complete address objects with placeholder values
+          presentAddress: {
+            street: application.location || 'To be updated',
+            city: 'To be updated',
+            state: 'To be updated',
+            zipCode: '0000',
+            country: 'Bangladesh',
+          },
+          permanentAddress: {
+            street: application.location || 'To be updated',
+            city: 'To be updated',
+            state: 'To be updated',
+            zipCode: '0000',
+            country: 'Bangladesh',
+          },
+          // Provide complete bank details with placeholder values
+          bankDetails: {
+            name: 'To be updated',
+            accountNumber: 'To be updated',
+            routingNumber: 'To be updated',
+          },
+          // Provide complete emergency contact with placeholder values
+          emergencyContact: {
+            name: 'To be updated',
+            phone: 'To be updated',
+            relation: 'To be updated',
+          },
+        };
+
+        await ResourceService.createResource(
+          resourceData,
+          user.userId,
+          user.name,
+          user.role
+        );
+
+        console.log(`✅ Resource created for hired application: ${application.name}`);
+      }
+    } catch (error) {
+      console.error('Error creating resource for hired application:', error);
+      // Don't fail the application update if resource creation fails
+    }
+  }
+
+  // If status changed from 'hired' to something else, delete resource and user
+  if (currentApplication.status === 'hired' && req.body.status && req.body.status !== 'hired') {
+    try {
+      const { Resource } = await import('../resource/resource.model');
+      const { ResourceService } = await import('../resource/resource.service');
+      const { AuthService } = await import('../auth/auth.service');
+      
+      // Find resource by applicationId
+      const resource = await Resource.findOne({ applicationId: id });
+      
+      if (resource) {
+        // Delete user if exists
+        if (resource.userId) {
+          try {
+            await AuthService.deleteUser(resource.userId);
+            console.log(`✅ User deleted: ${resource.userId}`);
+          } catch (error) {
+            console.error('Error deleting user:', error);
+            // Continue with resource deletion even if user deletion fails
+          }
+        }
+        
+        // Delete resource
+        await ResourceService.deleteResource(resource._id?.toString() || '');
+        console.log(`✅ Resource deleted for application: ${application.name}`);
+      }
+    } catch (error) {
+      console.error('Error deleting resource and user:', error);
+      // Don't fail the application update if deletion fails
+    }
   }
 
   sendResponse(res, {
