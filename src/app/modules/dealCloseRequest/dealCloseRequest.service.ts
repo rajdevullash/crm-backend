@@ -115,6 +115,23 @@ const markAsLost = async (
     lostReason,
   });
 
+  // ✅ ADD THIS: Remove from convertedLeads if present
+ await Lead.findById(leadId);
+  if (lead) {
+    const targetUserId = lead.assignedTo || lead.createdBy;
+    if (targetUserId) {
+      await User.findOneAndUpdate(
+        { _id: targetUserId },
+        { 
+          $pull: { 
+            convertedLeads: leadId 
+          }
+        }
+      );
+      console.log(`Removed lost lead from convertedLeads for user: ${targetUserId}`);
+    }
+  }
+
   // Add to history
   await Lead.findByIdAndUpdate(leadId, {
     $push: {
