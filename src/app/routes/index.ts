@@ -9,6 +9,7 @@ import { DealCloseRequestRoutes } from '../modules/dealCloseRequest/dealCloseReq
 import { HiringRoutes } from '../modules/hiring/hiring.route';
 import { PermissionRoutes } from '../modules/permission/permission.route';
 import { ResourceRoutes } from '../modules/resource/resource.route';
+import ActivityBadgeRoutes from '../modules/activityBadge/activityBadge.route';
 
 const router = express.Router();
 
@@ -52,6 +53,10 @@ const moduleRoutes = [
   {
     path: '/resources',
     route: ResourceRoutes,
+  },
+  {
+    path: '/activity-badge',
+    route: ActivityBadgeRoutes,
   }
 ];
 

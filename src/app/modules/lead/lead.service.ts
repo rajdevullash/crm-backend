@@ -17,6 +17,7 @@ import { Notification } from '../notification/notification.model';
 import { NotificationService } from '../notification/notification.service';
 import { emitActivityEvent } from '../socket/socketService';
 import { checkAndNotifySingleOverdueActivity } from '../notification/overdueActivityService';
+import { resetActivityBadgeForNewActivity } from '../activityBadge/activityBadge.service';
 
 const createLead = async (payload: ILead): Promise<ILead | null> => {
   // Validate userId
@@ -787,13 +788,20 @@ const updateLead = async (
       }, targetRooms);
 
       // Check if newly created activity is overdue and notify immediately
+      // Also reset activity badge for today if activity is for today
       if (change.action === 'activity_added' && payload.activities && result) {
         const newActivity = payload.activities[payload.activities.length - 1];
         if (newActivity) {
+          // Get activity date (for meeting, use meetingDate if available)
+          const activityDate = newActivity.type === 'meeting' && newActivity.meetingDate 
+            ? new Date(newActivity.meetingDate)
+            : new Date(newActivity.date);
+
           // Wait a bit for history to be saved, then check if activity is overdue
           // Use setTimeout to ensure history is saved before checking
           setTimeout(async () => {
             try {
+              // Check if activity is overdue
               const notified = await checkAndNotifySingleOverdueActivity(
                 result._id.toString(), 
                 newActivity
@@ -801,10 +809,60 @@ const updateLead = async (
               if (notified) {
                 console.log(`✅ Overdue notification sent immediately for backdated activity`);
               }
+
+              // Check if activity is for today before resetting badge
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const activityDateOnly = new Date(activityDate);
+              activityDateOnly.setHours(0, 0, 0, 0);
+
+              if (activityDateOnly.getTime() === today.getTime()) {
+                // Reset activity badge for users who should see this activity
+                // Get all user IDs who might see this activity
+                const userIds: string[] = [];
+                
+                // Add assigned user
+                if (result.assignedTo && result.assignedTo._id) {
+                  userIds.push(result.assignedTo._id.toString());
+                }
+                
+                // Add creator
+                if (result.createdBy) {
+                  const createdById = typeof result.createdBy === 'string'
+                    ? result.createdBy
+                    : (result.createdBy as any)._id?.toString();
+                  if (createdById) {
+                    userIds.push(createdById);
+                  }
+                }
+
+                // Get all admin users (they should see all activities)
+                const adminUsers = await User.find({
+                  role: { $in: ['admin', 'super_admin'] }
+                }).select('_id');
+                
+                adminUsers.forEach((admin: any) => {
+                  const adminId = admin._id.toString();
+                  if (!userIds.includes(adminId)) {
+                    userIds.push(adminId);
+                  }
+                });
+
+                console.log(`🔄 Resetting activity badge for ${userIds.length} user(s) due to new activity for today`);
+                console.log(`   User IDs: ${userIds.join(', ')}`);
+                console.log(`   Activity date: ${activityDateOnly.toISOString()}`);
+
+                // Reset badge for all affected users if activity is for today
+                if (userIds.length > 0) {
+                  await resetActivityBadgeForNewActivity(userIds, activityDate);
+                } else {
+                  console.warn('⚠️ No users found to reset activity badge for');
+                }
+              }
             } catch (error) {
-              console.error('❌ Error checking overdue activity:', error);
+              console.error('❌ Error checking overdue activity or resetting badge:', error);
             }
-          }, 500); // Wait 500ms for history to be saved
+          }, 1000); // Wait 1 second for lead to be fully saved with new activity
         }
       }
     });
