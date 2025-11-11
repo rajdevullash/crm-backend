@@ -23,18 +23,23 @@ const createNotification = async (
 
   // Emit socket event to all recipients
   if (populatedNotification && payload.recipients.length > 0) {
-    // Send notification to each recipient with their updated unread count
-    for (const userId of payload.recipients) {
-      const targetRoom = `user_${userId.toString()}`;
+    // Remove duplicate recipient IDs to prevent sending the same notification multiple times to the same user
+    const uniqueRecipients = Array.from(new Set(payload.recipients.map((id: any) => id.toString())));
+    
+    console.log(`📤 Sending notification to ${uniqueRecipients.length} unique recipients (${payload.recipients.length} total, ${payload.recipients.length - uniqueRecipients.length} duplicates removed)`);
+    
+    // Send notification to each unique recipient with their updated unread count
+    for (const userIdStr of uniqueRecipients) {
+      const targetRoom = `user_${userIdStr}`;
       
       // Calculate unread count for this specific user
       const unreadCount = await Notification.countDocuments({
-        recipients: userId,
-        'readBy.userId': { $ne: userId },
+        recipients: userIdStr,
+        'readBy.userId': { $ne: userIdStr },
       });
 
       console.log(`🔔 Emitting notification:new to room: ${targetRoom}`);
-      console.log(`📊 Unread count for user ${userId}:`, unreadCount);
+      console.log(`📊 Unread count for user ${userIdStr}:`, unreadCount);
       console.log(`📦 Notification:`, populatedNotification.title);
 
       emitNotificationEvent(

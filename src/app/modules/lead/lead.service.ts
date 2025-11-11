@@ -16,6 +16,7 @@ import { DealCloseRequest } from '../dealCloseRequest/dealCloseRequest.model';
 import { Notification } from '../notification/notification.model';
 import { NotificationService } from '../notification/notification.service';
 import { emitActivityEvent } from '../socket/socketService';
+import { checkAndNotifySingleOverdueActivity } from '../notification/overdueActivityService';
 
 const createLead = async (payload: ILead): Promise<ILead | null> => {
   // Validate userId
@@ -784,6 +785,28 @@ const updateLead = async (
         },
         timestamp: new Date().toISOString(),
       }, targetRooms);
+
+      // Check if newly created activity is overdue and notify immediately
+      if (change.action === 'activity_added' && payload.activities && result) {
+        const newActivity = payload.activities[payload.activities.length - 1];
+        if (newActivity) {
+          // Wait a bit for history to be saved, then check if activity is overdue
+          // Use setTimeout to ensure history is saved before checking
+          setTimeout(async () => {
+            try {
+              const notified = await checkAndNotifySingleOverdueActivity(
+                result._id.toString(), 
+                newActivity
+              );
+              if (notified) {
+                console.log(`✅ Overdue notification sent immediately for backdated activity`);
+              }
+            } catch (error) {
+              console.error('❌ Error checking overdue activity:', error);
+            }
+          }, 500); // Wait 500ms for history to be saved
+        }
+      }
     });
   }
 
