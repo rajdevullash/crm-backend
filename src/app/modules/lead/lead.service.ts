@@ -246,44 +246,64 @@ const updateLead = async (
       if (targetUserId) {
         // SCENARIO 1: Moving TO the last stage (Mark as converted)
         if (isMovingToLastStage && !isMovingFromLastStage) {
-          console.log('Lead moved to last stage - checking for conversion tracking');
+          // Don't count lost leads as converted
+          // Check: 1) dealStatus === 'lost', 2) stage title contains "lost"
+          const isLostByStatus = existingLead.dealStatus === 'lost' || payload.dealStatus === 'lost';
+          const isLostByStage = newStage.title.toLowerCase().includes('lost');
+          const isLost = isLostByStatus || isLostByStage;
           
-          const user = await User.findOne({ _id: targetUserId });
-          
-          if (user) {
-            // Migrate old data structure if convertedLeads is not an array
-            if (!Array.isArray(user.convertedLeads)) {
-              console.log('Converting convertedLeads from number to array...');
-              await User.findOneAndUpdate(
-                { _id: targetUserId },
-                { $set: { convertedLeads: [] } },
-                { new: true }
-              );
-              user.convertedLeads = [];
-            }
+          if (isLost) {
+            console.log(`🚫 Lead is marked as lost - skipping conversion tracking`, {
+              leadId: existingLead._id,
+              dealStatus: existingLead.dealStatus,
+              newStageTitle: newStage.title,
+              isLostByStatus,
+              isLostByStage
+            });
+          } else {
+            console.log('✅ Lead moved to last stage - checking for conversion tracking', {
+              leadId: existingLead._id,
+              dealStatus: existingLead.dealStatus,
+              newStageTitle: newStage.title
+            });
             
-            // Check if this lead is already counted in convertedLeads
-            const isAlreadyCounted = user.convertedLeads?.some(
-              (leadEntry: any) => leadEntry?._id?.toString() === existingLead._id.toString()
-            );
-
-            if (!isAlreadyCounted) {
-              console.log(`Adding lead to converted leads for user: ${targetUserId}`);
+            const user = await User.findOne({ _id: targetUserId });
+          
+            if (user) {
+              // Migrate old data structure if convertedLeads is not an array
+              if (!Array.isArray(user.convertedLeads)) {
+                console.log('Converting convertedLeads from number to array...');
+                await User.findOneAndUpdate(
+                  { _id: targetUserId },
+                  { $set: { convertedLeads: [] } },
+                  { new: true }
+                );
+                user.convertedLeads = [];
+              }
               
-              // Add the lead to convertedLeads array
-              await User.findOneAndUpdate(
-                { _id: targetUserId },
-                { 
-                  $push: { 
-                    convertedLeads: existingLead._id 
-                  }
-                },
-                { new: true }
+              // Check if this lead is already counted in convertedLeads
+              const isAlreadyCounted = user.convertedLeads?.some(
+                (leadEntry: any) => leadEntry?._id?.toString() === existingLead._id.toString()
               );
-              
-              console.log('Successfully tracked lead conversion');
-            } else {
-              console.log('Lead already counted in converted leads');
+
+              if (!isAlreadyCounted) {
+                console.log(`Adding lead to converted leads for user: ${targetUserId}`);
+                
+                // Add the lead to convertedLeads array
+                await User.findOneAndUpdate(
+                  { _id: targetUserId },
+                  { 
+                    $push: { 
+                      convertedLeads: existingLead._id 
+                    }
+                  },
+                  { new: true }
+                );
+                
+                console.log('Successfully tracked lead conversion');
+              } else {
+                console.log('Lead already counted in converted leads');
+              }
             }
           }
         }
