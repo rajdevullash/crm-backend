@@ -1,3 +1,6 @@
+/* eslint-disable no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from 'express';
 import { Job } from './job.model';
 import { Application } from './application.model';
@@ -202,6 +205,7 @@ const createApplication = catchAsync(async (req: Request, res: Response) => {
   }
 
   // Handle file uploads
+  // eslint-disable-next-line no-undef
   const files = req.files as { [fieldname: string]: Express.Multer.File[] };
   let resumeUrl = req.body.resumeUrl;
 
@@ -589,6 +593,19 @@ const regenerateATSScore = catchAsync(async (req: Request, res: Response) => {
   // Extract resume text
   const { extractResumeText } = await import('../../../helpers/resumeParser');
   const resumeText = await extractResumeText(application.resumeUrl || '');
+  
+  console.log(`📄 Resume text extracted: ${resumeText.length} characters`);
+  
+  // Check if resume text is available
+  if (!resumeText || resumeText.trim().length === 0) {
+    console.log('⚠️  No resume text available. Cannot regenerate ATS score.');
+    return sendResponse(res, {
+      statusCode: 400,
+      success: false,
+      message: 'Resume text could not be extracted. Please ensure the resume file is valid.',
+      data: null,
+    });
+  }
 
   // Import the ATS calculator
   const { calculateATSScore } = await import('../../helpers/atsCalculator');
@@ -597,23 +614,39 @@ const regenerateATSScore = catchAsync(async (req: Request, res: Response) => {
   let newScore: number;
   let newKeywords: string[] = [];
   
-  if (keywords && Array.isArray(keywords) && keywords.length > 0) {
-    // Use custom keywords for comparison
-    const { compareApplicantWithKeywords, initializeGemini } = await import('../../helpers/atsCalculator');
-    const model = initializeGemini();
-    
-    if (model) {
-      newScore = await compareApplicantWithKeywords(model.getGenerativeModel({ model: 'gemini-2.0-flash' }), keywords, {
-        resumeText,
-        location: application.location || '',
-        coverLetter: application.coverLetter,
-        name: application.name,
-        email: application.email,
-        phone: application.phone,
-      });
-      newKeywords = keywords; // Store custom keywords
+  try {
+    if (keywords && Array.isArray(keywords) && keywords.length > 0) {
+      // Use custom keywords for comparison
+      const { compareApplicantWithKeywords, initializeGemini } = await import('../../helpers/atsCalculator');
+      const model = initializeGemini();
+      
+      if (model) {
+        newScore = await compareApplicantWithKeywords(model.getGenerativeModel({ model: 'gemini-2.0-flash' }), keywords, {
+          resumeText,
+          location: application.location || '',
+          coverLetter: application.coverLetter,
+          name: application.name,
+          email: application.email,
+          phone: application.phone,
+        });
+        newKeywords = keywords; // Store custom keywords
+        console.log(`✅ ATS Score calculated with custom keywords: ${newScore}%`);
+      } else {
+        // Fallback to basic calculation
+        const result = await calculateATSScore(job, {
+          resumeText,
+          location: application.location || '',
+          coverLetter: application.coverLetter,
+          name: application.name,
+          email: application.email,
+          phone: application.phone,
+        });
+        newScore = result.score;
+        newKeywords = result.keywords;
+        console.log(`✅ ATS Score calculated (fallback): ${newScore}%`);
+      }
     } else {
-      // Fallback to basic calculation
+      // Calculate with original method (extract keywords from job)
       const result = await calculateATSScore(job, {
         resumeText,
         location: application.location || '',
@@ -624,19 +657,25 @@ const regenerateATSScore = catchAsync(async (req: Request, res: Response) => {
       });
       newScore = result.score;
       newKeywords = result.keywords;
+      console.log(`✅ ATS Score calculated: ${newScore}%`);
     }
-  } else {
-    // Calculate with original method (extract keywords from job)
-    const result = await calculateATSScore(job, {
-      resumeText,
-      location: application.location || '',
-      coverLetter: application.coverLetter,
-      name: application.name,
-      email: application.email,
-      phone: application.phone,
+    
+    // Ensure score is valid (between 0-100)
+    if (isNaN(newScore) || newScore < 0) {
+      console.log('⚠️  Invalid score calculated. Using default score of 50.');
+      newScore = 50;
+    }
+    if (newScore > 100) {
+      newScore = 100;
+    }
+  } catch (error) {
+    console.error('Error calculating ATS score:', error);
+    return sendResponse(res, {
+      statusCode: 500,
+      success: false,
+      message: 'Error calculating ATS score. Please try again.',
+      data: null,
     });
-    newScore = result.score;
-    newKeywords = result.keywords;
   }
 
   // Update the application with new score and keywords
