@@ -10,6 +10,7 @@ import { User } from '../auth/auth.model';
 import bcrypt from 'bcrypt';
 import config from '../../../config';
 import { ENUM_USER_ROLE } from '../../../enums/user';
+import { AuthService } from '../auth/auth.service';
 
 const generateEmployeeId = async (): Promise<string> => {
   // Generate employee ID like EMP-00001
@@ -86,13 +87,25 @@ const createResource = async (resourceData: Partial<IResource>, userId?: string,
         // Hash password (default password: 12345678)
         const hashedPassword = await bcrypt.hash('12345678', Number(config.bycrypt_salt_rounds));
         
+        // Determine role based on department
+        let userRole = ENUM_USER_ROLE.REPRESENTATIVE; // Default role
+        if (resource.department) {
+          const department = resource.department.toLowerCase();
+          if (department === 'hr' || department === 'human resources') {
+            userRole = ENUM_USER_ROLE.HR;
+          } else if (department === 'engineering' || department === 'sales') {
+            userRole = ENUM_USER_ROLE.REPRESENTATIVE;
+          }
+          // For other departments, use default REPRESENTATIVE
+        }
+        
         // Create user
         const user = await User.create({
           name: resource.name,
           email: resource.email,
           phone: resource.phone,
           password: hashedPassword,
-          role: ENUM_USER_ROLE.REPRESENTATIVE, // Default role, can be changed later
+          role: userRole,
         });
 
         // Update resource with user ID
@@ -220,7 +233,9 @@ const updateResource = async (
   const hasHistory = resource.jobHistory.length > 0 || resource.salaryHistory.length > 0 || resource.positionHistory.length > 0;
   
   // It's first update if: never updated before AND no history exists
-  const isFirstUpdate = !hasBeenUpdatedBefore && !hasHistory;
+  // BUT: if resource was created with salary = 0 and this is setting it to > 0, consider it first update (initial setup)
+  const isInitialSalarySetup = resource.salary === 0 && updateData.salary !== undefined && updateData.salary > 0;
+  const isFirstUpdate = (!hasBeenUpdatedBefore && !hasHistory) || isInitialSalarySetup;
 
   // Check for work mode change
   if (updateData.workMode && updateData.workMode !== resource.workMode) {
@@ -250,11 +265,11 @@ const updateResource = async (
   if (updateData.salary !== undefined && updateData.salary !== resource.salary) {
     // Track salary change if:
     // 1. It's not the first update (after initial setup)
-    // 2. Both old and new salary are > 0 (actual salary change, not initial setting from 0)
-    if (!isFirstUpdate && resource.salary > 0 && updateData.salary > 0) {
+    // 2. Old salary >= 0 and new salary > 0 (allow tracking from 0 to >0 if not first update)
+    if (!isFirstUpdate && resource.salary >= 0 && updateData.salary > 0) {
       changes.salary = true;
     }
-    // If it's first update or salary is being set from 0, don't track (initial setup)
+    // If it's first update, don't track (initial setup)
   }
 
   // Check for position change
@@ -302,15 +317,16 @@ const updateResource = async (
   }
 
   // Add to salary history if salary changed
-  // Track if: not first update AND both old and new salary > 0 (actual change, not initial setting)
+  // Track all salary changes after initial setup (when not first update)
   if (changes.salary) {
     const oldSalary = resource.salary;
     const newSalary = updatedResource.salary;
-    const percentageChange = oldSalary > 0 ? ((newSalary - oldSalary) / oldSalary) * 100 : 0;
+    // Calculate percentage change only if old salary > 0
+    const percentageChange = oldSalary > 0 ? ((newSalary - oldSalary) / oldSalary) * 100 : undefined;
 
     const salaryHistoryEntry = {
       salary: newSalary,
-      percentageChange: parseFloat(percentageChange.toFixed(2)),
+      percentageChange: percentageChange !== undefined ? parseFloat(percentageChange.toFixed(2)) : undefined,
       changedAt: new Date(),
       changedBy: userId ? { id: userId, name: userName || 'System', role: userRole || 'system' } : undefined,
       changeReason: (updateData as any).changeReason,
@@ -350,12 +366,23 @@ const deleteResource = async (id: string): Promise<{ resource: IResource | null;
   // Delete associated user if exists
   if (resource.userId) {
     try {
-      const { AuthService } = await import('../auth/auth.service');
-      await AuthService.deleteUser(resource.userId);
-      userDeleted = true;
-      console.log(`✅ User deleted: ${resource.userId} (associated with resource: ${resource.name})`);
+      // Check if user exists before deleting
+      const userExists = await User.findById(resource.userId);
+      
+      if (userExists) {
+        await AuthService.deleteUser(resource.userId);
+        userDeleted = true;
+        console.log(`✅ User deleted: ${resource.userId} (associated with resource: ${resource.name})`);
+      } else {
+        console.log(`⚠️  User not found (already deleted): ${resource.userId} (associated with resource: ${resource.name})`);
+      }
     } catch (error: any) {
-      console.error('Error deleting user for resource:', error);
+      // Check if error is "User not found" - this is okay, user might already be deleted
+      if (error?.statusCode === 404 || error?.message?.includes('not found')) {
+        console.log(`⚠️  User not found (may already be deleted): ${resource.userId} (associated with resource: ${resource.name})`);
+      } else {
+        console.error('Error deleting user for resource:', error);
+      }
       // Continue with resource deletion even if user deletion fails
       // User might not exist or might have been deleted already
     }

@@ -62,7 +62,10 @@ export const getTodaysActivitiesCount = async (userId: string, userRole?: string
       }
     });
 
-    console.log(`📊 Today's activities count for user ${userId} (role: ${userRole}): ${count}`);
+    // Only log if count > 0 to reduce noise
+    if (count > 0) {
+      console.log(`📊 Today's activities count for user ${userId} (role: ${userRole}): ${count}`);
+    }
     return count;
   } catch (error) {
     console.error('Error getting today\'s activities count:', error);
@@ -114,8 +117,11 @@ export const getActivityBadgeStatus = async (userId: string, userRole?: string):
     // Badge should show if: count > 0 AND not viewed
     const shouldShow = count > 0 && !badge.viewed;
 
-    console.log(`📊 Badge status for user ${userId} (role: ${userRole}): count=${count}, viewed=${badge.viewed}, shouldShow=${shouldShow}`);
-    console.log(`   Date: ${date}, Badge ID: ${badge._id}`);
+    // Only log if badge should show or count changed to reduce noise
+    if (shouldShow || count > 0) {
+      console.log(`📊 Badge status for user ${userId} (role: ${userRole}): count=${count}, viewed=${badge.viewed}, shouldShow=${shouldShow}`);
+      console.log(`   Date: ${date}, Badge ID: ${badge._id}`);
+    }
 
     return {
       count,
@@ -246,6 +252,31 @@ export const initializeActivityBadgeCron = (): void => {
       const date = getTodayDateString();
       const count = await resetActivityBadgesForDate(date);
       console.log(`✅ Daily reset: Cleared ${count} activity badge viewed status for ${date}`);
+      
+      // Emit socket event to refresh activity badge for all users
+      try {
+        const { getIO } = await import('../socket/socketService');
+        const io = getIO();
+        
+        // Get all users to emit badge refresh event
+        const { User } = await import('../auth/auth.model');
+        const allUsers = await User.find({}).select('_id');
+        
+        // Emit activityBadgeRefresh event to all users
+        allUsers.forEach((user: any) => {
+          const userId = user._id.toString();
+          const userRoom = `user_${userId}`;
+          io.to(userRoom).emit('activityBadgeRefresh', {
+            userId,
+            date,
+            timestamp: new Date().toISOString(),
+          });
+        });
+        
+        console.log(`📢 Emitted activityBadgeRefresh to ${allUsers.length} user(s) via cron job`);
+      } catch (socketError) {
+        console.error('❌ Error emitting activityBadgeRefresh socket event from cron:', socketError);
+      }
     });
     
     console.log('✅ Activity badge cron job initialized (runs daily at 00:01 AM)');

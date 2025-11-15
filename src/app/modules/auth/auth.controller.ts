@@ -98,8 +98,8 @@ const updateUser = catchAsync(async (req: Request, res: Response) => {
   console.log('Request body:', req.body);
   console.log('Request file:', req.file);
 
-  // Security check: Representatives can only update their own profile
-  if (user?.role === 'representative' && user?.userId !== id) {
+  // Security check: Representatives and HR can only update their own profile
+  if ((user?.role === 'representative' || user?.role === 'hr') && user?.userId !== id) {
     return res.status(httpStatus.FORBIDDEN).json({
       success: false,
       message: 'You can only update your own profile',

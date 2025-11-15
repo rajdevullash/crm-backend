@@ -875,9 +875,31 @@ const updateLead = async (
                 // Reset badge for all affected users if activity is for today
                 if (userIds.length > 0) {
                   await resetActivityBadgeForNewActivity(userIds, activityDate);
+                  
+                  // Emit socket event to refresh activity badge for affected users
+                  try {
+                    const { getIO } = await import('../socket/socketService');
+                    const io = getIO();
+                    
+                    // Emit activityBadgeRefresh event to each affected user's room
+                    userIds.forEach((userId) => {
+                      const userRoom = `user_${userId}`;
+                      io.to(userRoom).emit('activityBadgeRefresh', {
+                        userId,
+                        date: activityDateOnly.toISOString().split('T')[0],
+                        timestamp: new Date().toISOString(),
+                      });
+                      console.log(`📢 Emitted activityBadgeRefresh to room: ${userRoom}`);
+                    });
+                  } catch (socketError) {
+                    console.error('❌ Error emitting activityBadgeRefresh socket event:', socketError);
+                  }
                 } else {
                   console.warn('⚠️ No users found to reset activity badge for');
                 }
+              } else {
+                // Activity is not for today - cron job will handle it
+                console.log(`ℹ️ Activity date (${activityDateOnly.toISOString()}) is not today, badge will be updated by cron job`);
               }
             } catch (error) {
               console.error('❌ Error checking overdue activity or resetting badge:', error);

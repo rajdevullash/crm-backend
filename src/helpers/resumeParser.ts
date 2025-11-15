@@ -32,31 +32,37 @@ export const extractResumeText = async (resumeUrl: string): Promise<string> => {
     // Read PDF file
     const dataBuffer = fs.readFileSync(fullPath);
 
-    // Try to parse with pdf-parse
+    // Try to parse with pdf-parse using dynamic import to avoid browser API issues
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require('pdf-parse');
+      // Use dynamic import instead of require to avoid browser API polyfill issues
+      const pdfParseModule = await import('pdf-parse');
+      const pdfParse = (pdfParseModule.default || pdfParseModule) as unknown as (input: Buffer) => Promise<{ text: string }>;
+
       const data = await pdfParse(dataBuffer);
-      const text = data.text || '';
+      const text = data && typeof data.text === 'string' ? data.text : '';
+
+      // Clean the extracted text
+      const cleanedText = text
+        .replace(/\s+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
       
-      if (text.length > 0) {
-        console.log(`✅ Parsed resume: ${text.length} characters extracted`);
-        return text;
+      if (cleanedText.length > 0) {
+        console.log(`✅ Parsed resume with pdf-parse: ${cleanedText.length} characters extracted`);
+        return cleanedText;
+      } else {
+        console.log('⚠️  pdf-parse returned empty text. Trying enhanced extraction...');
+        return extractEnhancedTextFromPDF(dataBuffer);
       }
     } catch (parseError: unknown) {
       const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
       
-      // If pdf-parse fails due to browser API issues, use basic extraction
-      if (errorMessage.includes('DOMMatrix') || errorMessage.includes('ImageData') || errorMessage.includes('Path2D')) {
-        console.log('⚠️  pdf-parse has browser API issues. Using basic text extraction...');
-        return extractBasicTextFromPDF(dataBuffer);
-      }
+      console.log(`⚠️  pdf-parse error: ${errorMessage}`);
+      console.log('⚠️  Falling back to enhanced text extraction...');
       
-      throw parseError;
+      // Use enhanced extraction as fallback
+      return extractEnhancedTextFromPDF(dataBuffer);
     }
-
-    // Fallback to basic extraction if pdf-parse returns empty
-    return extractBasicTextFromPDF(dataBuffer);
   } catch (error) {
     console.error('Error extracting resume text:', error);
     return '';
@@ -64,30 +70,48 @@ export const extractResumeText = async (resumeUrl: string): Promise<string> => {
 };
 
 /**
- * Basic text extraction from PDF (fallback method)
+ * Enhanced text extraction from PDF (fallback method)
+ * Uses multiple strategies to extract readable text from PDF
  */
-const extractBasicTextFromPDF = (buffer: Buffer): string => {
+const extractEnhancedTextFromPDF = (buffer: Buffer): string => {
   try {
-    const text = buffer.toString('utf8', 0, Math.min(buffer.length, 500000));
-    let extractedText = '';
+    const text = buffer.toString('utf8', 0, Math.min(buffer.length, 1000000));
+    const extractedParts: string[] = [];
     
     // Method 1: Extract text between parentheses (common PDF text format)
+    // This is the most common format for PDF text content
     const parenMatches = text.match(/\((.*?)\)/g) || [];
     const parenText = parenMatches
       .map(match => {
-        const content = match.slice(1, -1);
-        return content
+        let content = match.slice(1, -1);
+        // Decode PDF escape sequences
+        content = content
           .replace(/\\n/g, ' ')
           .replace(/\\r/g, ' ')
           .replace(/\\t/g, ' ')
           .replace(/\\\(/g, '(')
           .replace(/\\\)/g, ')')
-          .replace(/\\\\/g, '\\');
+          .replace(/\\\\/g, '\\')
+          .replace(/\\\d{3}/g, (match) => {
+            // Decode octal escape sequences
+            const code = parseInt(match.slice(1), 8);
+            return String.fromCharCode(code);
+          });
+        return content;
       })
-      .filter(str => str.length > 1 && /[a-zA-Z0-9]/.test(str))
+      .filter(str => {
+        // Filter out garbage: must have meaningful content
+        const hasLetters = /[a-zA-Z]{2,}/.test(str);
+        const notTooShort = str.length > 2;
+        const notJustNumbers = !/^\d+$/.test(str);
+        const notMetadata = !str.includes('D:') && !str.includes('ReportLab') && !str.includes('anonymous');
+        return hasLetters && notTooShort && notJustNumbers && notMetadata;
+      })
       .join(' ');
     
-    extractedText += parenText + ' ';
+    if (parenText.trim().length > 50) {
+      extractedParts.push(parenText);
+    }
     
     // Method 2: Extract text from BT...ET blocks (PDF text objects)
     const btMatches = text.match(/BT[\s\S]*?ET/g) || [];
@@ -96,36 +120,76 @@ const extractBasicTextFromPDF = (buffer: Buffer): string => {
         const blockMatches = block.match(/\((.*?)\)/g) || [];
         return blockMatches
           .map(m => {
-            const content = m.slice(1, -1);
-            return content
+            let content = m.slice(1, -1);
+            content = content
               .replace(/\\n/g, ' ')
               .replace(/\\r/g, ' ')
               .replace(/\\t/g, ' ')
               .replace(/\\\(/g, '(')
               .replace(/\\\)/g, ')')
-              .replace(/\\\\/g, '\\');
+              .replace(/\\\\/g, '\\')
+              .replace(/\\\d{3}/g, (match) => {
+                const code = parseInt(match.slice(1), 8);
+                return String.fromCharCode(code);
+              });
+            return content;
           })
-          .filter(str => str.length > 1)
+          .filter(str => {
+            const hasLetters = /[a-zA-Z]{2,}/.test(str);
+            const notTooShort = str.length > 2;
+            const notMetadata = !str.includes('D:') && !str.includes('ReportLab') && !str.includes('anonymous');
+            return hasLetters && notTooShort && notMetadata;
+          })
           .join(' ');
       })
-      .filter(str => str.length > 0)
+      .filter(str => str.length > 0 && /[a-zA-Z]{3,}/.test(str))
       .join(' ');
     
-    extractedText += btText;
-    
-    // Clean up extracted text
-    const cleanedText = extractedText
-      .replace(/\s+/g, ' ')
-      .replace(/[^\w\s\-.,;:!?()]/g, ' ')
-      .trim();
-    
-    if (cleanedText.length > 0) {
-      console.log(`✅ Extracted basic text: ${cleanedText.length} characters`);
+    if (btText.trim().length > 50) {
+      extractedParts.push(btText);
     }
     
-    return cleanedText;
+    // Method 3: Extract text from stream objects
+    const streamMatches = text.match(/stream[\s\S]*?endstream/g) || [];
+    const streamText = streamMatches
+      .map(stream => {
+        // Try to extract readable text from stream
+        const content = stream.replace(/stream|endstream/g, '').trim();
+        // Look for text patterns
+        const textPatterns = content.match(/[a-zA-Z]{3,}/g) || [];
+        return textPatterns.join(' ');
+      })
+      .filter(str => str.length > 10)
+      .join(' ');
+    
+    if (streamText.trim().length > 50) {
+      extractedParts.push(streamText);
+    }
+    
+    // Combine all extracted parts
+    let combinedText = extractedParts.join(' ');
+    
+    // Clean up extracted text
+    const cleanedText = combinedText
+      .replace(/\s+/g, ' ')
+      .replace(/[^\w\s\-.,;:!?()@#&]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    // Final validation: ensure we have meaningful content
+    const wordCount = cleanedText.split(/\s+/).filter(w => w.length > 2).length;
+    const hasMeaningfulContent = wordCount > 10 && /[a-zA-Z]{3,}/.test(cleanedText);
+    
+    if (hasMeaningfulContent && cleanedText.length > 100) {
+      console.log(`✅ Extracted enhanced text: ${cleanedText.length} characters, ${wordCount} words`);
+      return cleanedText;
+    } else {
+      console.log(`⚠️  Enhanced extraction found limited content: ${cleanedText.length} chars, ${wordCount} words`);
+      // Return empty if content is too limited
+      return '';
+    }
   } catch (error) {
-    console.error('Error in basic text extraction:', error);
+    console.error('Error in enhanced text extraction:', error);
     return '';
   }
 };

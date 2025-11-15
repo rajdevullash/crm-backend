@@ -5,7 +5,6 @@ const addressSchema = new Schema(
   {
     street: { type: String, required: true, trim: true, default: 'To be updated' },
     city: { type: String, required: true, trim: true, default: 'To be updated' },
-    state: { type: String, required: true, trim: true, default: 'To be updated' },
     zipCode: { type: String, required: true, trim: true, default: '0000' },
     country: { type: String, required: true, trim: true, default: 'Bangladesh' },
   },

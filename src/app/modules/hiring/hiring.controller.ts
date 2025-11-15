@@ -76,21 +76,38 @@ const getAllJobs = catchAsync(async (req: Request, res: Response) => {
   const limit = Number(paginationOptions.limit) || 10;
   const skip = (page - 1) * limit;
 
-  const sortBy = (paginationOptions.sortBy as string) || '-postedDate';
-
-  const jobs = await Job.find(conditions)
-    .sort(sortBy)
-    .skip(skip)
-    .limit(limit);
+  // Sort: active jobs first, then by postedDate (newest first)
+  // Priority: active > closed > draft, then by postedDate descending
+  // Use aggregation to add a sort priority field
+  const jobs = await Job.aggregate([
+    { $match: conditions },
+    {
+      $addFields: {
+        statusPriority: {
+          $switch: {
+            branches: [
+              { case: { $eq: ['$status', 'active'] }, then: 1 },
+              { case: { $eq: ['$status', 'closed'] }, then: 2 },
+              { case: { $eq: ['$status', 'draft'] }, then: 3 },
+            ],
+            default: 4,
+          },
+        },
+      },
+    },
+    { $sort: { statusPriority: 1, postedDate: -1 } },
+    { $skip: skip },
+    { $limit: limit },
+  ]);
 
   const total = await Job.countDocuments(conditions);
 
   // Update applicant count for each job
   const jobsWithApplicantCount = await Promise.all(
-    jobs.map(async (job) => {
+    jobs.map(async (job: any) => {
       const applicantCount = await Application.countDocuments({ jobId: job._id?.toString() });
       return {
-        ...job.toJSON(),
+        ...job,
         applicantCount,
       };
     })
@@ -222,12 +239,32 @@ const createApplication = catchAsync(async (req: Request, res: Response) => {
     console.log(`📁 Resume path: ${resumeUrl}`);
     
     // Extract text from resume
+    console.log('═══════════════════════════════════════════════════');
+    console.log('🔍 RESUME PARSING - STEP BY STEP DEBUG');
+    console.log('═══════════════════════════════════════════════════');
+    console.log(`📁 Step 1: Resume file path: ${resumeUrl}`);
+    
     const { extractResumeText } = await import('../../../helpers/resumeParser');
+    console.log('📝 Step 2: Calling extractResumeText function...');
+    
     const resumeText = await extractResumeText(resumeUrl);
     
-    console.log(`📄 Resume text extracted: ${resumeText.length} characters`);
+    console.log('═══════════════════════════════════════════════════');
+    console.log(`📄 Step 3: Resume text extraction result`);
+    console.log(`📊 Text length: ${resumeText.length} characters`);
+    console.log(`📄 Text preview (first 500 chars):\n${resumeText.substring(0, 500)}`);
+    console.log(`📄 Text preview (last 200 chars):\n${resumeText.substring(Math.max(0, resumeText.length - 200))}`);
+    
+    if (resumeText.length === 0) {
+      console.log('❌ ERROR: Resume text is empty! Cannot proceed with ATS calculation.');
+      console.log('═══════════════════════════════════════════════════');
+    } else {
+      console.log('✅ Resume text extracted successfully');
+      console.log('═══════════════════════════════════════════════════');
+    }
     
     // Calculate ATS score using resume text
+    console.log('🔍 Step 4: Starting ATS score calculation...');
     const { calculateATSScore } = await import('../../helpers/atsCalculator');
     
     const result = await calculateATSScore(job, {
@@ -461,32 +498,27 @@ const updateApplication = catchAsync(async (req: Request, res: Response) => {
   // If status changed from 'hired' to something else, delete resource and user
   if (currentApplication.status === 'hired' && req.body.status && req.body.status !== 'hired') {
     try {
+      // Use dynamic import to avoid circular dependency
       const { Resource } = await import('../resource/resource.model');
       const { ResourceService } = await import('../resource/resource.service');
-      const { AuthService } = await import('../auth/auth.service');
       
       // Find resource by applicationId
       const resource = await Resource.findOne({ applicationId: id });
       
       if (resource) {
-        // Delete user if exists
-        if (resource.userId) {
-          try {
-            await AuthService.deleteUser(resource.userId);
-            console.log(`✅ User deleted: ${resource.userId}`);
-          } catch (error) {
-            console.error('Error deleting user:', error);
-            // Continue with resource deletion even if user deletion fails
-          }
+        // Delete resource (ResourceService.deleteResource will also delete the associated user)
+        try {
+          await ResourceService.deleteResource(resource._id?.toString() || '');
+          console.log(`✅ Resource deleted for application: ${application.name}`);
+        } catch (error: any) {
+          console.error('Error deleting resource:', error);
+          // Continue even if resource deletion fails - don't block application update
         }
-        
-        // Delete resource
-        await ResourceService.deleteResource(resource._id?.toString() || '');
-        console.log(`✅ Resource deleted for application: ${application.name}`);
       }
-    } catch (error) {
-      console.error('Error deleting resource and user:', error);
+    } catch (error: any) {
+      console.error('Error in resource deletion process:', error);
       // Don't fail the application update if deletion fails
+      // Log error but continue with application update
     }
   }
 
@@ -563,10 +595,10 @@ const addApplicationNote = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-// Regenerate ATS score with custom keywords
+// Regenerate ATS score
 const regenerateATSScore = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { keywords } = req.body;
+  const { keywords } = req.body; // Custom keywords from frontend (optional)
 
   // Fetch the application
   const application = await Application.findById(id);
@@ -610,55 +642,38 @@ const regenerateATSScore = catchAsync(async (req: Request, res: Response) => {
   // Import the ATS calculator
   const { calculateATSScore } = await import('../../helpers/atsCalculator');
 
-  // Calculate new ATS score with custom keywords if provided
+  // Calculate new ATS score
   let newScore: number;
-  let newKeywords: string[] = [];
+  let applicantKeywords: string[] = [];
   
   try {
+    // If custom keywords provided, temporarily update job keywords for calculation
+    let jobForCalculation = job;
     if (keywords && Array.isArray(keywords) && keywords.length > 0) {
-      // Use custom keywords for comparison
-      const { compareApplicantWithKeywords, initializeGemini } = await import('../../helpers/atsCalculator');
-      const model = initializeGemini();
-      
-      if (model) {
-        newScore = await compareApplicantWithKeywords(model.getGenerativeModel({ model: 'gemini-2.0-flash' }), keywords, {
-          resumeText,
-          location: application.location || '',
-          coverLetter: application.coverLetter,
-          name: application.name,
-          email: application.email,
-          phone: application.phone,
-        });
-        newKeywords = keywords; // Store custom keywords
-        console.log(`✅ ATS Score calculated with custom keywords: ${newScore}%`);
-      } else {
-        // Fallback to basic calculation
-        const result = await calculateATSScore(job, {
-          resumeText,
-          location: application.location || '',
-          coverLetter: application.coverLetter,
-          name: application.name,
-          email: application.email,
-          phone: application.phone,
-        });
-        newScore = result.score;
-        newKeywords = result.keywords;
-        console.log(`✅ ATS Score calculated (fallback): ${newScore}%`);
-      }
+      // Create a temporary job object with custom keywords
+      jobForCalculation = {
+        ...job.toObject(),
+        extractedKeywords: keywords,
+      } as any;
+      console.log(`📋 Using custom keywords (${keywords.length} keywords) for ATS calculation`);
     } else {
-      // Calculate with original method (extract keywords from job)
-      const result = await calculateATSScore(job, {
-        resumeText,
-        location: application.location || '',
-        coverLetter: application.coverLetter,
-        name: application.name,
-        email: application.email,
-        phone: application.phone,
-      });
-      newScore = result.score;
-      newKeywords = result.keywords;
-      console.log(`✅ ATS Score calculated: ${newScore}%`);
+      console.log(`📋 Using saved job keywords (${job.extractedKeywords?.length || 0} keywords) for ATS calculation`);
     }
+
+    // Calculate with job keywords (custom or saved)
+    const result = await calculateATSScore(jobForCalculation, {
+      resumeText,
+      location: application.location || '',
+      coverLetter: application.coverLetter,
+      name: application.name,
+      email: application.email,
+      phone: application.phone,
+    });
+    newScore = result.score;
+    // Store applicant keywords (extracted from resume), not job keywords
+    applicantKeywords = result.applicantKeywords || [];
+    console.log(`✅ ATS Score calculated: ${newScore}%`);
+    console.log(`📋 Applicant Keywords extracted: ${applicantKeywords.length} keywords`);
     
     // Ensure score is valid (between 0-100)
     if (isNaN(newScore) || newScore < 0) {
@@ -678,9 +693,9 @@ const regenerateATSScore = catchAsync(async (req: Request, res: Response) => {
     });
   }
 
-  // Update the application with new score and keywords
+  // Update the application with new score and applicant keywords
   application.atsScore = newScore;
-  application.extractedKeywords = newKeywords;
+  application.extractedKeywords = applicantKeywords; // Store applicant keywords from resume
   await application.save();
 
   sendResponse(res, {

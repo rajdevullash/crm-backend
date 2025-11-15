@@ -3,7 +3,6 @@ import { z } from 'zod';
 const addressSchema = z.object({
   street: z.string({ required_error: 'Street is required' }),
   city: z.string({ required_error: 'City is required' }),
-  state: z.string({ required_error: 'State is required' }),
   zipCode: z.string({ required_error: 'Zip code is required' }),
   country: z.string().default('Bangladesh'),
 });
