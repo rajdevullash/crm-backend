@@ -4,6 +4,19 @@
 
 import fs from 'fs';
 import path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
+// Polyfill for DOMMatrix if not available
+if (typeof globalThis.DOMMatrix === 'undefined') {
+  globalThis.DOMMatrix = class DOMMatrix {
+    constructor() {
+      // Minimal implementation for pdf-parse
+    }
+  } as any;
+}
 
 /**
  * Extract text from PDF resume file
@@ -32,37 +45,62 @@ export const extractResumeText = async (resumeUrl: string): Promise<string> => {
     // Read PDF file
     const dataBuffer = fs.readFileSync(fullPath);
 
-    // Try to parse with pdf-parse using dynamic import to avoid browser API issues
+    // Try multiple extraction methods in order of preference
+    let text = '';
+    
+    // Method 1: Try pdf-parse with proper import
     try {
-      // Use dynamic import instead of require to avoid browser API polyfill issues
-      const pdfParseModule = await import('pdf-parse');
-      const pdfParse = (pdfParseModule.default || pdfParseModule) as unknown as (input: Buffer) => Promise<{ text: string }>;
-
-      const data = await pdfParse(dataBuffer);
-      const text = data && typeof data.text === 'string' ? data.text : '';
-
-      // Clean the extracted text
-      const cleanedText = text
-        .replace(/\s+/g, ' ')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-      
-      if (cleanedText.length > 0) {
+      text = await extractWithPDFParse(dataBuffer);
+      if (text && text.trim().length > 50) {
+        const cleanedText = cleanExtractedText(text);
         console.log(`✅ Parsed resume with pdf-parse: ${cleanedText.length} characters extracted`);
         return cleanedText;
-      } else {
-        console.log('⚠️  pdf-parse returned empty text. Trying enhanced extraction...');
-        return extractEnhancedTextFromPDF(dataBuffer);
       }
     } catch (parseError: unknown) {
       const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
-      
       console.log(`⚠️  pdf-parse error: ${errorMessage}`);
-      console.log('⚠️  Falling back to enhanced text extraction...');
-      
-      // Use enhanced extraction as fallback
-      return extractEnhancedTextFromPDF(dataBuffer);
     }
+
+    // Method 2: Try pdf2json as alternative
+    if (!text || text.trim().length < 50) {
+      try {
+        text = await extractWithPDF2JSON(dataBuffer);
+        if (text && text.trim().length > 50) {
+          const cleanedText = cleanExtractedText(text);
+          console.log(`✅ Parsed resume with pdf2json: ${cleanedText.length} characters extracted`);
+          return cleanedText;
+        }
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.log(`⚠️  pdf2json error: ${errorMessage}`);
+      }
+    }
+
+    // Method 3: Try external tools (pdftotext)
+    if (!text || text.trim().length < 50) {
+      try {
+        text = await extractWithPDfToText(fullPath);
+        if (text && text.trim().length > 50) {
+          const cleanedText = cleanExtractedText(text);
+          console.log(`✅ Parsed resume with pdftotext: ${cleanedText.length} characters extracted`);
+          return cleanedText;
+        }
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.log(`⚠️  pdftotext error: ${errorMessage}`);
+      }
+    }
+
+    // Method 4: Enhanced text extraction as fallback
+    console.log('⚠️  Falling back to enhanced text extraction...');
+    const enhancedText = extractEnhancedTextFromPDF(dataBuffer);
+    if (enhancedText && enhancedText.trim().length > 50) {
+      console.log(`✅ Extracted enhanced text: ${enhancedText.length} characters`);
+      return enhancedText;
+    }
+
+    console.log('❌ All extraction methods failed');
+    return '';
   } catch (error) {
     console.error('Error extracting resume text:', error);
     return '';
@@ -70,17 +108,148 @@ export const extractResumeText = async (resumeUrl: string): Promise<string> => {
 };
 
 /**
+ * Clean extracted text
+ */
+const cleanExtractedText = (text: string): string => {
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[^\w\s\-.,;:!?()@#&\/]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+/**
+ * Extract text using pdf-parse library
+ */
+const extractWithPDFParse = async (buffer: Buffer): Promise<string> => {
+  try {
+    // Try different import approaches
+    let pdfParse: any;
+    
+    try {
+      // Approach 1: Default import
+      const pdfParseModule = await import('pdf-parse');
+      pdfParse = pdfParseModule.default || pdfParseModule;
+    } catch (e) {
+      // Approach 2: Require
+      pdfParse = require('pdf-parse');
+    }
+    
+    if (typeof pdfParse !== 'function') {
+      throw new Error('pdf-parse is not a function');
+    }
+    
+    const data = await pdfParse(buffer);
+    return data.text || '';
+  } catch (error) {
+    throw new Error(`pdf-parse failed: ${error}`);
+  }
+};
+
+/**
+ * Extract text using pdf2json library
+ */
+const extractWithPDF2JSON = async (buffer: Buffer): Promise<string> => {
+  try {
+    // Try different import approaches
+    let PDFParser: any;
+    
+    try {
+      // Approach 1: Default import
+      const pdf2jsonModule = await import('pdf2json');
+      PDFParser = pdf2jsonModule.default || pdf2jsonModule.PDFParser;
+    } catch (e) {
+      // Approach 2: Require
+      PDFParser = require('pdf2json').PDFParser;
+    }
+    
+    if (typeof PDFParser !== 'function') {
+      throw new Error('PDFParser is not a constructor');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const pdfParser = new PDFParser();
+      let text = '';
+      
+      pdfParser.on('pdfParser_dataError', (errData: any) => {
+        reject(new Error(errData.parserError));
+      });
+      
+      pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
+        try {
+          // Extract text from parsed PDF data
+          if (pdfData.Pages) {
+            pdfData.Pages.forEach((page: any) => {
+              if (page.Texts) {
+                page.Texts.forEach((textItem: any) => {
+                  if (textItem.R && textItem.R.length > 0) {
+                    textItem.R.forEach((r: any) => {
+                      if (r.T) {
+                        // Decode URI-encoded text
+                        const decodedText = decodeURIComponent(r.T);
+                        text += decodedText + ' ';
+                      }
+                    });
+                  }
+                });
+              }
+            });
+          }
+          
+          resolve(text.trim());
+        } catch (error) {
+          reject(error);
+        }
+      });
+      
+      pdfParser.parseBuffer(buffer);
+    });
+  } catch (error) {
+    throw new Error(`pdf2json failed: ${error}`);
+  }
+};
+
+/**
+ * Extract text using external pdftotext tool
+ */
+const extractWithPDfToText = async (fullPath: string): Promise<string> => {
+  try {
+    // Check if pdftotext is available
+    try {
+      await execAsync('which pdftotext');
+    } catch (e) {
+      throw new Error('pdftotext is not available');
+    }
+    
+    // Create a temporary file for the output
+    const tempPath = fullPath + '.txt';
+    
+    // Run pdftotext
+    await execAsync(`pdftotext -layout "${fullPath}" "${tempPath}"`);
+    
+    // Read the extracted text
+    const text = fs.readFileSync(tempPath, 'utf8');
+    
+    // Clean up the temporary file
+    fs.unlinkSync(tempPath);
+    
+    return text;
+  } catch (error) {
+    throw new Error(`pdftotext failed: ${error}`);
+  }
+};
+
+/**
  * Enhanced text extraction from PDF (fallback method)
- * Uses multiple strategies to extract readable text from PDF
  */
 const extractEnhancedTextFromPDF = (buffer: Buffer): string => {
   try {
-    const text = buffer.toString('utf8', 0, Math.min(buffer.length, 1000000));
-    const extractedParts: string[] = [];
+    // Convert buffer to string and look for readable text patterns
+    const rawText = buffer.toString('utf8', 0, Math.min(buffer.length, 2000000));
     
     // Method 1: Extract text between parentheses (common PDF text format)
-    // This is the most common format for PDF text content
-    const parenMatches = text.match(/\((.*?)\)/g) || [];
+    const parenMatches = rawText.match(/\((.*?)\)/g) || [];
     const parenText = parenMatches
       .map(match => {
         let content = match.slice(1, -1);
@@ -92,29 +261,31 @@ const extractEnhancedTextFromPDF = (buffer: Buffer): string => {
           .replace(/\\\(/g, '(')
           .replace(/\\\)/g, ')')
           .replace(/\\\\/g, '\\')
-          .replace(/\\\d{3}/g, (match) => {
+          .replace(/\\(\d{3})/g, (match, octal) => {
             // Decode octal escape sequences
-            const code = parseInt(match.slice(1), 8);
+            const code = parseInt(octal, 8);
             return String.fromCharCode(code);
           });
         return content;
       })
       .filter(str => {
-        // Filter out garbage: must have meaningful content
+        // Filter out garbage
         const hasLetters = /[a-zA-Z]{2,}/.test(str);
         const notTooShort = str.length > 2;
         const notJustNumbers = !/^\d+$/.test(str);
-        const notMetadata = !str.includes('D:') && !str.includes('ReportLab') && !str.includes('anonymous');
+        const notMetadata = !str.includes('D:') && 
+                           !str.includes('ReportLab') && 
+                           !str.includes('anonymous') &&
+                           !str.includes('unspecified') &&
+                           !str.includes('endobj') &&
+                           !str.includes('/Type') &&
+                           !str.includes('/Subtype');
         return hasLetters && notTooShort && notJustNumbers && notMetadata;
       })
       .join(' ');
     
-    if (parenText.trim().length > 50) {
-      extractedParts.push(parenText);
-    }
-    
     // Method 2: Extract text from BT...ET blocks (PDF text objects)
-    const btMatches = text.match(/BT[\s\S]*?ET/g) || [];
+    const btMatches = rawText.match(/BT[\s\S]*?ET/g) || [];
     const btText = btMatches
       .map(block => {
         const blockMatches = block.match(/\((.*?)\)/g) || [];
@@ -128,8 +299,8 @@ const extractEnhancedTextFromPDF = (buffer: Buffer): string => {
               .replace(/\\\(/g, '(')
               .replace(/\\\)/g, ')')
               .replace(/\\\\/g, '\\')
-              .replace(/\\\d{3}/g, (match) => {
-                const code = parseInt(match.slice(1), 8);
+              .replace(/\\(\d{3})/g, (match, octal) => {
+                const code = parseInt(octal, 8);
                 return String.fromCharCode(code);
               });
             return content;
@@ -137,7 +308,7 @@ const extractEnhancedTextFromPDF = (buffer: Buffer): string => {
           .filter(str => {
             const hasLetters = /[a-zA-Z]{2,}/.test(str);
             const notTooShort = str.length > 2;
-            const notMetadata = !str.includes('D:') && !str.includes('ReportLab') && !str.includes('anonymous');
+            const notMetadata = !str.includes('D:') && !str.includes('ReportLab');
             return hasLetters && notTooShort && notMetadata;
           })
           .join(' ');
@@ -145,53 +316,121 @@ const extractEnhancedTextFromPDF = (buffer: Buffer): string => {
       .filter(str => str.length > 0 && /[a-zA-Z]{3,}/.test(str))
       .join(' ');
     
-    if (btText.trim().length > 50) {
-      extractedParts.push(btText);
-    }
-    
-    // Method 3: Extract text from stream objects
-    const streamMatches = text.match(/stream[\s\S]*?endstream/g) || [];
-    const streamText = streamMatches
-      .map(stream => {
-        // Try to extract readable text from stream
-        const content = stream.replace(/stream|endstream/g, '').trim();
-        // Look for text patterns
-        const textPatterns = content.match(/[a-zA-Z]{3,}/g) || [];
-        return textPatterns.join(' ');
+    // Method 3: Look for readable ASCII text patterns
+    const readableTexts = rawText.match(/[a-zA-Z0-9\s.,;:!?()@#&\-\/]+/g) || [];
+    const readableText = readableTexts
+      .filter(str => {
+        return str.length > 10 && 
+               str.split(/\s+/).length > 3 && 
+               /[a-zA-Z]{3,}/.test(str) &&
+               !str.includes('D:') && 
+               !str.includes('ReportLab') && 
+               !str.includes('anonymous') &&
+               !str.includes('endobj') &&
+               !str.includes('/Type') &&
+               !str.includes('/Subtype');
       })
-      .filter(str => str.length > 10)
       .join(' ');
     
-    if (streamText.trim().length > 50) {
-      extractedParts.push(streamText);
-    }
+    // Combine all extracted text
+    let combinedText = [parenText, btText, readableText].join(' ');
     
-    // Combine all extracted parts
-    let combinedText = extractedParts.join(' ');
-    
-    // Clean up extracted text
+    // Clean up the combined text
     const cleanedText = combinedText
       .replace(/\s+/g, ' ')
-      .replace(/[^\w\s\-.,;:!?()@#&]/g, ' ')
+      .replace(/[^\w\s\-.,;:!?()@#&\/]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     
-    // Final validation: ensure we have meaningful content
+    // Final validation
     const wordCount = cleanedText.split(/\s+/).filter(w => w.length > 2).length;
     const hasMeaningfulContent = wordCount > 10 && /[a-zA-Z]{3,}/.test(cleanedText);
     
     if (hasMeaningfulContent && cleanedText.length > 100) {
-      console.log(`✅ Extracted enhanced text: ${cleanedText.length} characters, ${wordCount} words`);
       return cleanedText;
     } else {
       console.log(`⚠️  Enhanced extraction found limited content: ${cleanedText.length} chars, ${wordCount} words`);
-      // Return empty if content is too limited
       return '';
     }
   } catch (error) {
     console.error('Error in enhanced text extraction:', error);
     return '';
   }
+};
+
+/**
+ * Check if document is likely a resume
+ */
+export const isLikelyResume = (text: string): boolean => {
+  if (!text || text.trim().length < 100) {
+    return false;
+  }
+
+  const lowerText = text.toLowerCase();
+  
+  // Check for strong resume indicators
+  const resumeIndicators = [
+    'experience', 'skills', 'education', 'objective', 'summary',
+    'employment', 'project', 'certification', 'qualification',
+    'technical skills', 'professional', 'background', 'expertise',
+    'work history', 'career', 'portfolio'
+  ];
+  
+  let resumeScore = 0;
+  for (const indicator of resumeIndicators) {
+    if (lowerText.includes(indicator)) {
+      resumeScore++;
+    }
+  }
+  
+  // Check for technical skills
+  const technicalSkills = [
+    'javascript', 'python', 'java', 'react', 'node', 'html', 'css',
+    'mongodb', 'sql', 'git', 'aws', 'docker', 'api', 'rest',
+    'typescript', 'angular', 'vue', 'express', 'mysql', 'postgresql'
+  ];
+  
+  let technicalScore = 0;
+  for (const skill of technicalSkills) {
+    if (lowerText.includes(skill)) {
+      technicalScore++;
+    }
+  }
+  
+  // Check for non-resume indicators
+  const nonResumeIndicators = [
+    'proforma invoice', 'invoice', 'bill of lading', 'shipping instruction',
+    'port of shipment', 'port of discharge', 'container type',
+    'total invoice value', 'advance payment', 'balance payment',
+    'shipping marks', 'description of goods', 'quantity unit',
+    'exporter', 'consignee', 'shipment period', 'mode of shipment'
+  ];
+  
+  let nonResumeScore = 0;
+  for (const indicator of nonResumeIndicators) {
+    if (lowerText.includes(indicator)) {
+      nonResumeScore++;
+    }
+  }
+  
+  // Decision logic
+  // If there are 3 or more non-resume indicators, it's definitely not a resume
+  if (nonResumeScore >= 3) {
+    return false;
+  }
+  
+  // If there are at least 2 resume indicators AND at least 2 technical skills, it's likely a resume
+  if (resumeScore >= 2 && technicalScore >= 2) {
+    return true;
+  }
+  
+  // If there are at least 4 resume indicators, it's likely a resume
+  if (resumeScore >= 4) {
+    return true;
+  }
+  
+  // Otherwise, it's probably not a resume
+  return false;
 };
 
 export default extractResumeText;

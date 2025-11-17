@@ -221,6 +221,26 @@ const createApplication = catchAsync(async (req: Request, res: Response) => {
     });
   }
 
+  // Check if the same email has already applied for this job
+  // Normalize email to lowercase for comparison
+  const incomingEmail = (req.body.email || '').toString().trim().toLowerCase();
+  if (incomingEmail) {
+    const already = await Application.findOne({ jobId: req.body.jobId, email: incomingEmail });
+    if (already) {
+      // Return structured validation-like response so front-end can show field-level error
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error: email already applied for this job',
+        errorMessages: [
+          {
+            path: 'email',
+            message: 'This email has already applied for this job',
+          },
+        ],
+      });
+    }
+  }
+
   // Handle file uploads
   // eslint-disable-next-line no-undef
   const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -230,81 +250,111 @@ const createApplication = catchAsync(async (req: Request, res: Response) => {
     resumeUrl = `/uploads/resumes/${files.resume[0].filename}`;
   }
 
-  // Calculate ATS score using Gemini AI if not provided
   let atsScore = req.body.atsScore;
-  let extractedKeywords: string[] = [];
-  
-  if (!atsScore || atsScore === 0) {
-    console.log(`🔍 Calculating ATS score for application to job: ${job.title}`);
-    console.log(`📁 Resume path: ${resumeUrl}`);
-    
+let extractedKeywords: string[] = [];
+
+if (!atsScore || atsScore === 0) {
+  console.log(`🔍 Calculating ATS score for application to job: ${job.title}`);
+  console.log(`📁 Resume path: ${resumeUrl}`);
+
+  // Check if resume text is provided directly
+  let resumeText = '';
+  if (req.body.resumeText && req.body.resumeText.trim().length > 0) {
+    console.log('Using manually provided resume text');
+    resumeText = req.body.resumeText;
+  } else {
     // Extract text from resume
-    console.log('═══════════════════════════════════════════════════');
+    console.log('═══════════════════════════════════════════════');
     console.log('🔍 RESUME PARSING - STEP BY STEP DEBUG');
-    console.log('═══════════════════════════════════════════════════');
+    console.log('═════════════════════════════════════════════════');
     console.log(`📁 Step 1: Resume file path: ${resumeUrl}`);
-    
-    const { extractResumeText } = await import('../../../helpers/resumeParser');
+
+    const { extractResumeText, isLikelyResume } = await import('../../../helpers/resumeParser');
     console.log('📝 Step 2: Calling extractResumeText function...');
-    
-    const resumeText = await extractResumeText(resumeUrl);
-    
-    console.log('═══════════════════════════════════════════════════');
+
+    resumeText = await extractResumeText(resumeUrl);
+
+    console.log('═════════════════════════════════════════════════');
     console.log(`📄 Step 3: Resume text extraction result`);
     console.log(`📊 Text length: ${resumeText.length} characters`);
     console.log(`📄 Text preview (first 500 chars):\n${resumeText.substring(0, 500)}`);
     console.log(`📄 Text preview (last 200 chars):\n${resumeText.substring(Math.max(0, resumeText.length - 200))}`);
-    
+
     if (resumeText.length === 0) {
       console.log('❌ ERROR: Resume text is empty! Cannot proceed with ATS calculation.');
-      console.log('═══════════════════════════════════════════════════');
+      console.log('═════════════════════════════════════════════════');
+      
+      // If text extraction fails, return an error with a suggestion to manually input text
+      return sendResponse(res, {
+        statusCode: 400,
+        success: false,
+        message: 'Could not extract text from resume. Please paste your resume text manually.',
+        data: {
+          requiresManualInput: true,
+          resumeUrl
+        }
+      });
     } else {
-      console.log('✅ Resume text extracted successfully');
-      console.log('═══════════════════════════════════════════════════');
+      // Check if the document is likely a resume
+      const isResume = isLikelyResume(resumeText);
+      
+      if (!isResume) {
+        console.log('⚠️  Document does not appear to be a resume');
+        console.log('═════════════════════════════════════════════════');
+        
+        // If the document is not a resume, set score to 0 and continue
+        atsScore = 0;
+        extractedKeywords = [];
+        console.log('⚠️  Using ATS score of 0 for non-resume document');
+      } else {
+        console.log('✅ Resume text extracted and validated successfully');
+        console.log('═════════════════════════════════════════════════');
+        
+        // Calculate ATS score using resume text
+        console.log('🔍 Step 4: Starting ATS score calculation...');
+        const { calculateATSScore } = await import('../../helpers/atsCalculator');
+        
+        const result = await calculateATSScore(job, {
+          resumeText,
+          location: req.body.location || '',
+          coverLetter: req.body.coverLetter || '',
+          name: req.body.name,
+          email: req.body.email,
+          phone: req.body.phone,
+        });
+        
+        atsScore = result.score;
+        // Store applicant keywords (from resume), not job keywords
+        extractedKeywords = result.applicantKeywords || [];
+        
+        console.log(`✅ ATS Score calculated: ${atsScore}%`);
+        console.log(`📋 Applicant Keywords extracted: ${extractedKeywords.length} keywords -> [${extractedKeywords.join(', ')}]`);
+      }
     }
-    
-    // Calculate ATS score using resume text
-    console.log('🔍 Step 4: Starting ATS score calculation...');
-    const { calculateATSScore } = await import('../../helpers/atsCalculator');
-    
-    const result = await calculateATSScore(job, {
-      resumeText,
-      location: req.body.location || '',
-      coverLetter: req.body.coverLetter || '',
-      name: req.body.name,
-      email: req.body.email,
-      phone: req.body.phone,
-    });
-    
-    atsScore = result.score;
-    // Store applicant keywords (from resume), not job keywords
-    extractedKeywords = result.applicantKeywords || [];
-    
-    console.log(`✅ ATS Score calculated: ${atsScore}%`);
-    console.log(`📋 Applicant Keywords extracted: ${extractedKeywords.length} keywords`);
   }
+}
 
-  // Create application with calculated ATS score and keywords
-  const applicationData = {
-    ...req.body,
-    resumeUrl,
-    atsScore,
-    extractedKeywords,
-  };
+// Create application with calculated ATS score and keywords
+const applicationData = {
+  ...req.body,
+  resumeUrl,
+  atsScore,
+  extractedKeywords,
+};
 
-  const application = await Application.create(applicationData);
+const application = await Application.create(applicationData);
 
-  // Increment job applicant count
-  await Job.findByIdAndUpdate(req.body.jobId, {
-    $inc: { applicantCount: 1 },
-  });
+// Increment job applicant count
+await Job.findByIdAndUpdate(req.body.jobId, {
+  $inc: { applicantCount: 1 },
+});
 
-  sendResponse(res, {
-    statusCode: 201,
-    success: true,
-    message: 'Application submitted successfully',
-    data: application,
-  });
+sendResponse(res, {
+  statusCode: 201,
+  success: true,
+  message: 'Application submitted successfully',
+  data: application,
+});
 });
 
 const getApplicationsByJob = catchAsync(async (req: Request, res: Response) => {
@@ -572,9 +622,27 @@ const addApplicationNote = catchAsync(async (req: Request, res: Response) => {
     addedAt: new Date(),
   };
 
+  // Keep a short synced `remarks` field in the application for quick access
+  // Trim and cap the remark length to 500 chars to avoid very large strings
+  const remarkText = (text || '');
+
+  // If the remark is empty after trimming, return a structured validation error
+  // if (!remarkText || remarkText.length === 0) {
+  //   return res.status(400).json({
+  //     success: false,
+  //     message: 'Validation error: remark is empty',
+  //     errorMessages: [
+  //       {
+  //         path: 'text',
+  //         message: 'Remark cannot be empty',
+  //       },
+  //     ],
+  //   });
+  // }
+
   const application = await Application.findByIdAndUpdate(
     id,
-    { $push: { notes: note } },
+    { $push: { notes: note }, $set: { remarks: remarkText } },
     { new: true, runValidators: true }
   );
 

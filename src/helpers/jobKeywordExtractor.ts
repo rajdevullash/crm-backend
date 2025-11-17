@@ -51,20 +51,35 @@ DO NOT INCLUDE:
 Job Description:
 ${cleanDescription}
 
-Return ONLY a comma-separated list of technical keywords.
-Example: JavaScript, React.js, Node.js, Express.js, MongoDB, REST API, Git, Redux, TypeScript, 0-1 years`;
+  Return ONLY a JSON array of keywords, for example: ["javascript","react","node.js"].
+  - Use lowercase for keywords.
+  - Do not include explanations or extra text.
+  - Keep tokens short (max 25 items).
+  Example: ["javascript","react","node.js","mongodb","rest api","git"]`;
 
     const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const keywords = text
-      .split(',')
-      .map((k: string) => k.trim())
-      .filter((k: string) => k.length > 0)
+    const text = (result.response.text() || '').trim();
+
+    // Try JSON parse first, otherwise fallback to comma/newline splitting
+    let parsed: string[] = [];
+    try {
+      const maybe = JSON.parse(text);
+      if (Array.isArray(maybe)) parsed = maybe.map((k: any) => (typeof k === 'string' ? k.trim() : String(k))).filter(Boolean);
+      else if (typeof maybe === 'string') parsed = maybe.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    } catch (e) {
+      parsed = text.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    }
+
+    // Basic sanitization: lowercase, remove surrounding punctuation, filter short tokens
+    const sanitized = parsed
+      .map(k => k.replace(/^['"]+|['"]+$/g, '').toLowerCase().trim())
+      .map(k => k.replace(/^[^a-z0-9+#.+-]+|[^a-z0-9+#.+-]+$/gi, ''))
+      .filter(k => k.length >= 2)
       .slice(0, 25);
 
-    if (keywords.length > 0) {
-      console.log(`✅ Extracted ${keywords.length} keywords from job using Gemini AI`);
-      return keywords;
+    if (sanitized.length > 0) {
+      console.log(`✅ Extracted ${sanitized.length} keywords from job using Gemini AI`);
+      return sanitized;
     }
 
     return extractBasicKeywords(job);

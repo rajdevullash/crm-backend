@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import express from 'express';
 import { ENUM_USER_ROLE } from '../../../enums/user';
 import { uploadProfileImage } from '../../../shared/multerLocal';

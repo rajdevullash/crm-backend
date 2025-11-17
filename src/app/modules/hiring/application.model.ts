@@ -38,6 +38,12 @@ const applicationSchema = new Schema<IApplication>(
       type: String,
       trim: true,
     },
+    // Free-form remarks for HR to add quick notes visible on the application card
+    remarks: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     atsScore: {
       type: Number,
       required: true,
@@ -70,7 +76,7 @@ const applicationSchema = new Schema<IApplication>(
       {
         text: {
           type: String,
-          required: true,
+          required: false,
         },
         addedBy: {
           id: {
@@ -109,5 +115,7 @@ const applicationSchema = new Schema<IApplication>(
 applicationSchema.index({ jobId: 1, atsScore: -1 });
 applicationSchema.index({ email: 1 });
 applicationSchema.index({ status: 1, appliedDate: -1 });
+// Prevent duplicate applications for the same job by the same email at the DB level
+applicationSchema.index({ jobId: 1, email: 1 }, { unique: true });
 
 export const Application = model<IApplication>('Application', applicationSchema);

@@ -34,87 +34,91 @@ export const calculateATSScore = async (
   applicant: ApplicantData
 ): Promise<{ score: number; keywords: string[]; applicantKeywords: string[] }> => {
   try {
+    console.log('═════════════════════════════════════════════════');
+    console.log('🔍 ATS SCORE CALCULATION - STEP BY STEP DEBUG');
+    console.log('═════════════════════════════════════════════════');
+    console.log(`📋 Job: ${job.title}`);
+    console.log(`📄 Resume text length: ${applicant.resumeText?.length || 0} characters`);
+
     if (!applicant.resumeText || applicant.resumeText.trim().length === 0) {
-      return { score: 50, keywords: [], applicantKeywords: [] };
+      console.log('❌ No resume text provided');
+      return { score: 0, keywords: [], applicantKeywords: [] };
     }
 
     const ai = initializeGemini();
     
-    if (!ai) {
-      // Use saved job keywords from database if available
-      let basicKeywords: string[] = [];
-      if (job.extractedKeywords && job.extractedKeywords.length > 0) {
-        basicKeywords = job.extractedKeywords;
-      } else {
-        basicKeywords = extractBasicKeywords(job);
-      }
-      
-      // Extract applicant keywords - search resume for job keywords
-      const basicApplicantKeywords = extractBasicApplicantKeywords(applicant, basicKeywords);
-      
-      // Compare saved job keywords with resume keywords
-      const basicScore = compareKeywordsBasic(basicKeywords, applicant);
-      
-      return { score: basicScore, keywords: basicKeywords, applicantKeywords: basicApplicantKeywords };
-    }
-
-    const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
     // Use saved job keywords from database if available, otherwise extract from description
     let jobKeywords: string[] = [];
     if (job.extractedKeywords && job.extractedKeywords.length > 0) {
       jobKeywords = job.extractedKeywords;
+      console.log(`📋 Using saved job keywords (${jobKeywords.length} keywords)`);
     } else {
       // Fallback: Extract keywords from job description if not saved
-      jobKeywords = await extractJobKeywords(model, job);
+      if (ai) {
+        const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        jobKeywords = await extractJobKeywords(model, job);
+        console.log(`📋 Extracted job keywords (${jobKeywords.length} keywords)`);
+      } else {
+        jobKeywords = extractBasicKeywords(job);
+        console.log(`📋 Using basic job keywords (${jobKeywords.length} keywords)`);
+      }
     }
 
-    // Extract keywords from applicant resume using Gemini (pass job keywords for fallback)
+    console.log(`📋 Job Keywords: [${jobKeywords.join(', ')}]`);
+
+    // Extract keywords from applicant resume
     let applicantKeywords: string[] = [];
     try {
-      applicantKeywords = await extractApplicantKeywords(applicant, jobKeywords);
+      if (ai) {
+        const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        applicantKeywords = await extractApplicantKeywords(model, applicant, jobKeywords);
+        console.log(`🤖 Gemini extracted applicant keywords (${applicantKeywords.length} keywords)`);
+      }
       
+      // Fallback to basic extraction if Gemini returns empty or fails
       if (applicantKeywords.length === 0) {
         applicantKeywords = extractBasicApplicantKeywords(applicant, jobKeywords);
+        console.log(`📝 Basic extraction found applicant keywords (${applicantKeywords.length} keywords)`);
       }
     } catch (error: unknown) {
-      // Fallback: search resume text for job keywords
+      console.log('⚠️  Error extracting applicant keywords with Gemini, using fallback');
       applicantKeywords = extractBasicApplicantKeywords(applicant, jobKeywords);
     }
 
-    if (jobKeywords.length === 0) {
-      const basicKeywords = extractBasicKeywords(job);
-      let score: number;
-      try {
-        score = await compareApplicantWithKeywords(model, basicKeywords, applicant);
-      } catch (compareError: any) {
-        // Fallback to basic comparison on error
-        score = compareKeywordsBasic(basicKeywords, applicant);
-      }
-      return { score, keywords: basicKeywords, applicantKeywords };
-    }
+    console.log(`📋 Applicant Keywords: [${applicantKeywords.join(', ')}]`);
 
-    // Compare saved job keywords with applicant keywords and calculate score
+    // Compare keywords and calculate score
     let score: number;
     
-    // If we have applicant keywords extracted, use them for scoring
     if (applicantKeywords.length > 0) {
       score = compareApplicantKeywordsWithJobKeywords(applicantKeywords, jobKeywords);
+      console.log(`📊 Score calculated from keyword comparison: ${score}%`);
     } else {
-      // Fallback: use Gemini or basic comparison if no applicant keywords
-      try {
-        score = await compareApplicantWithKeywords(model, jobKeywords, applicant);
-      } catch (compareError: any) {
-        // Handle rate limit errors (429) and other API errors - fallback to basic comparison
-        const errorMessage = compareError?.message || String(compareError);
-        if (!errorMessage.includes('429') && !errorMessage.includes('Too Many Requests') && !errorMessage.includes('Resource exhausted')) {
-          console.error('Error comparing with Gemini:', compareError);
+      // Fallback scoring methods
+      if (ai && jobKeywords.length > 0) {
+        try {
+          const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+          score = await compareApplicantWithKeywords(model, jobKeywords, applicant);
+          console.log(`🤖 Gemini calculated score: ${score}%`);
+        } catch (compareError: any) {
+          const errorMessage = compareError?.message || String(compareError);
+          if (!errorMessage.includes('429') && !errorMessage.includes('Too Many Requests')) {
+            console.error('Error comparing with Gemini:', compareError);
+          }
+          score = compareKeywordsBasic(jobKeywords, applicant);
+          console.log(`📝 Basic comparison score: ${score}%`);
         }
-        
-        // Use basic comparison when Gemini fails
+      } else {
         score = compareKeywordsBasic(jobKeywords, applicant);
+        console.log(`📝 Basic comparison score: ${score}%`);
       }
     }
+
+    // Ensure score is within valid range
+    score = Math.max(0, Math.min(100, score));
+    
+    console.log(`✅ Final ATS Score: ${score}%`);
+    console.log('═════════════════════════════════════════════════');
 
     return { score, keywords: jobKeywords, applicantKeywords };
   } catch (error) {
@@ -168,7 +172,7 @@ DO NOT INCLUDE:
 - Job titles, generic words, locations, soft skills
 
 Job Description:
-${cleanDescription}
+ ${cleanDescription}
 
 Return ONLY a comma-separated list of technical keywords.`;
 
@@ -195,42 +199,39 @@ Return ONLY a comma-separated list of technical keywords.`;
 /**
  * Extract keywords from applicant resume using Gemini
  */
-export const extractApplicantKeywords = async (applicant: ApplicantData, jobKeywords?: string[]): Promise<string[]> => {
-  try {
-    const ai = initializeGemini();
-    if (!ai) {
-      return extractBasicApplicantKeywords(applicant, jobKeywords);
-    }
-    
-    if (!applicant.resumeText) {
-      return extractBasicApplicantKeywords(applicant, jobKeywords);
-    }
+const extractApplicantKeywords = async (
+  model: any,
+  applicant: ApplicantData,
+  jobKeywords?: string[]
+): Promise<string[]> => {
+  if (!applicant.resumeText) {
+    return [];
+  }
 
-    const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    
-    const cleanResumeText = applicant.resumeText
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&[a-z]+;/gi, ' ')
-      .replace(/[\[\]<>{}]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+  const cleanResumeText = applicant.resumeText
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/[\[\]<>{}]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
-    // Check if resume text is meaningful (not just garbage/metadata)
-    const isGarbageText = 
-      cleanResumeText.length < 100 ||
-      /^(anonymous|D:\d+|ReportLab|unspecified)/i.test(cleanResumeText) ||
-      !/[a-zA-Z]{4,}/.test(cleanResumeText) ||
-      cleanResumeText.split(/\s+/).filter(w => w.length > 3).length < 10;
-    
-    if (isGarbageText) {
-      return extractBasicApplicantKeywords(applicant, jobKeywords);
-    }
+  // Check if resume text is meaningful
+  const isGarbageText = 
+    cleanResumeText.length < 100 ||
+    /^(anonymous|D:\d+|ReportLab|unspecified)/i.test(cleanResumeText) ||
+    !/[a-zA-Z]{4,}/.test(cleanResumeText) ||
+    cleanResumeText.split(/\s+/).filter(w => w.length > 3).length < 10;
+  
+  if (isGarbageText) {
+    console.log('⚠️  Resume text appears to be garbage or metadata');
+    return [];
+  }
 
-    // Build prompt with job keywords context if available
-    let prompt = '';
-    if (jobKeywords && jobKeywords.length > 0) {
-      prompt = `
+  // Build prompt with job keywords context if available
+  let prompt = '';
+  if (jobKeywords && jobKeywords.length > 0) {
+    prompt = `
 Extract ONLY technical skills, tools, and technologies from this resume that match or relate to these job requirements: ${jobKeywords.join(', ')}.
 
 PRIORITY: Focus on extracting keywords that match the job requirements listed above.
@@ -250,11 +251,11 @@ DO NOT INCLUDE:
 - PDF metadata or encoding artifacts
 
 Resume Content:
-${cleanResumeText.substring(0, 4000)}
+ ${cleanResumeText.substring(0, 4000)}
 
 Return ONLY a comma-separated list of technical skills that are relevant to the job requirements.`;
-    } else {
-      prompt = `
+  } else {
+    prompt = `
 Extract ONLY technical skills, tools, and technologies from this resume.
 
 INCLUDE:
@@ -271,11 +272,12 @@ DO NOT INCLUDE:
 - PDF metadata or encoding artifacts
 
 Resume Content:
-${cleanResumeText.substring(0, 4000)}
+ ${cleanResumeText.substring(0, 4000)}
 
 Return ONLY a comma-separated list of technical skills.`;
-    }
+  }
 
+  try {
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     
@@ -286,15 +288,10 @@ Return ONLY a comma-separated list of technical skills.`;
       .filter((k: string) => !/<|>|\[|\]|{|}|&/.test(k))
       .slice(0, 25);
 
-    if (keywords.length > 0) {
-      return keywords;
-    }
-
-    // If Gemini returns empty, fallback to searching resume for job keywords
-    return extractBasicApplicantKeywords(applicant, jobKeywords);
-  } catch (error: unknown) {
-    // Fallback: search resume for job keywords
-    return extractBasicApplicantKeywords(applicant, jobKeywords);
+    return keywords;
+  } catch (error) {
+    console.error('Error extracting applicant keywords with Gemini:', error);
+    return [];
   }
 };
 
@@ -313,12 +310,12 @@ export const compareApplicantWithKeywords = async (
 You are an ATS evaluator. Compare this applicant's resume with the job keywords and give a match score from 0-100.
 
 Job Keywords:
-${keywords.map((k: string, i: number) => `${i + 1}. ${k}`).join('\n')}
+ ${keywords.map((k: string, i: number) => `${i + 1}. ${k}`).join('\n')}
 
 Applicant Resume:
-${resumeContent.substring(0, 3000)}
+ ${resumeContent.substring(0, 3000)}
 
-${coverLetterContent ? `Cover Letter:\n${coverLetterContent.substring(0, 500)}` : ''}
+ ${coverLetterContent ? `Cover Letter:\n${coverLetterContent.substring(0, 500)}` : ''}
 
 Evaluate based on:
 1. Keyword matches (40%)
@@ -331,7 +328,7 @@ Scoring:
 - 70-89: Good match
 - 50-69: Moderate match
 - 30-49: Weak match
-- 10-29: Poor match
+- 10-29: Resume match
 - 0-9: No match
 
 Return ONLY a number between 0-100.`;
@@ -374,10 +371,9 @@ Return ONLY a number between 0-100.`;
     return score;
   } catch (error: any) {
     const errorMessage = error?.message || String(error);
-    if (!errorMessage.includes('429') && !errorMessage.includes('Too Many Requests') && !errorMessage.includes('Resource exhausted')) {
+    if (!errorMessage.includes('429') && !errorMessage.includes('Too Many Requests')) {
       console.error('Error comparing with Gemini:', error);
     }
-    // Fallback to basic comparison when Gemini fails
     return compareKeywordsBasic(keywords, applicant);
   }
 };
@@ -398,12 +394,14 @@ const extractBasicKeywords = (job: IJob): string[] => {
     .trim();
   
   const technicalKeywords = [
-    'javascript', 'typescript', 'python', 'java', 'c++', 'c#', 'php', 'ruby', 'go', 'rust',
-    'react', 'angular', 'vue', 'next', 'node', 'express', 'django', 'spring', 'flask',
-    'mongodb', 'postgresql', 'mysql', 'redis', 'firebase', 'sql',
-    'git', 'docker', 'kubernetes', 'aws', 'azure', 'gcp',
-    'api', 'rest', 'graphql', 'jwt', 'oauth', 'html', 'css', 'sass', 'tailwind', 'bootstrap',
-    'redux', 'jest', 'webpack', 'babel', 'npm', 'yarn'
+    'javascript', 'js', 'typescript', 'python', 'java', 'c++', 'c#', 'csharp', 'php', 'ruby', 'go', 'rust',
+    'react', 'reactjs', 'react.js', 'angular', 'vue', 'next', 'nextjs', 'next.js', 'node', 'nodejs', 'node.js', 
+    'express', 'expressjs', 'express.js', 'django', 'spring', 'flask',
+    'mongodb', 'postgresql', 'postgres', 'mysql', 'redis', 'firebase', 'sql', 'sqlserver', 'mongoose',
+    'git', 'github', 'docker', 'docker-compose', 'kubernetes', 'k8s', 'aws', 'azure', 'gcp',
+    'api', 'rest', 'rest api', 'rest apis', 'graphql', 'jwt', 'oauth', 'html', 'css', 'sass', 'tailwind', 'bootstrap',
+    'redux', 'jest', 'mocha', 'chai', 'webpack', 'babel', 'npm', 'yarn', 'pnpm', 'ci/cd',
+    'mern', 'mean', 'lamp', 'full stack', 'fullstack', 'frontend', 'backend'
   ];
   
   const foundKeywords: string[] = [];
@@ -446,7 +444,6 @@ const extractBasicKeywords = (job: IJob): string[] => {
 
 /**
  * Basic keyword extraction from applicant resume
- * If job keywords are provided, search for those in resume text
  */
 const extractBasicApplicantKeywords = (applicant: ApplicantData, jobKeywords?: string[]): string[] => {
   const resumeText = applicant.resumeText || '';
@@ -466,7 +463,20 @@ const extractBasicApplicantKeywords = (applicant: ApplicantData, jobKeywords?: s
   const foundKeywords: string[] = [];
   const lowerText = cleanText.toLowerCase();
   
-  // If job keywords are provided, search for those in resume first (priority)
+  // Comprehensive technical keywords list
+  const technicalKeywords = [
+    'javascript', 'js', 'typescript', 'python', 'java', 'c++', 'c#', 'csharp', 'php', 'ruby', 'go', 'rust',
+    'react', 'reactjs', 'react.js', 'angular', 'vue', 'next', 'nextjs', 'next.js', 'node', 'nodejs', 'node.js', 
+    'express', 'expressjs', 'express.js', 'django', 'spring', 'flask',
+    'mongodb', 'postgresql', 'postgres', 'mysql', 'redis', 'firebase', 'sql', 'sqlserver', 'mongoose',
+    'git', 'github', 'docker', 'docker-compose', 'kubernetes', 'k8s', 'aws', 'azure', 'gcp',
+    'api', 'rest', 'rest api', 'rest apis', 'graphql', 'jwt', 'oauth', 'html', 'css', 'sass', 'tailwind', 'bootstrap',
+    'redux', 'jest', 'mocha', 'chai', 'webpack', 'babel', 'npm', 'yarn', 'pnpm', 'ci/cd',
+    'bachelor', 'master', 'degree', 'certification', 'certified', 'authentication',
+    'mern', 'mean', 'lamp', 'full stack', 'fullstack', 'frontend', 'backend'
+  ];
+  
+  // If job keywords are provided, search for those first (priority)
   if (jobKeywords && jobKeywords.length > 0) {
     for (const jobKeyword of jobKeywords) {
       const keywordLower = jobKeyword.toLowerCase().trim();
@@ -479,26 +489,24 @@ const extractBasicApplicantKeywords = (applicant: ApplicantData, jobKeywords?: s
       
       // Try exact match
       if (lowerText.includes(keywordLower) || lowerText.includes(cleanKeyword)) {
-        // Find the actual word/phrase in resume (preserve original case if possible)
         const regex = new RegExp(`\\b${jobKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
         const match = cleanText.match(regex);
         if (match && match[0]) {
           foundKeywords.push(match[0]);
         } else {
-          foundKeywords.push(jobKeyword); // Use job keyword if exact match not found
+          foundKeywords.push(jobKeyword);
         }
       } else {
-        // Try partial match for multi-word keywords (e.g., "React.js" -> "react")
+        // Try partial match for multi-word keywords
         const keywordParts = cleanKeyword.split(/[\s,.\-+]+/).filter(part => part.length > 2);
         if (keywordParts.length > 0) {
           for (const part of keywordParts) {
             if (lowerText.includes(part)) {
-              // Try to find the full keyword or at least the part
               const partRegex = new RegExp(`\\b${part}\\b`, 'gi');
               const partMatch = cleanText.match(partRegex);
               if (partMatch && partMatch[0]) {
                 foundKeywords.push(partMatch[0]);
-                break; // Found at least one part, move to next keyword
+                break;
               }
             }
           }
@@ -512,16 +520,6 @@ const extractBasicApplicantKeywords = (applicant: ApplicantData, jobKeywords?: s
   }
   
   // Fallback: search for common technical keywords
-  const technicalKeywords = [
-    'javascript', 'typescript', 'python', 'java', 'c++', 'c#', 'php', 'ruby', 'go', 'rust',
-    'react', 'angular', 'vue', 'next', 'node', 'express', 'django', 'spring', 'flask',
-    'mongodb', 'postgresql', 'mysql', 'redis', 'firebase', 'sql',
-    'git', 'docker', 'kubernetes', 'aws', 'azure', 'gcp',
-    'api', 'rest', 'graphql', 'jwt', 'oauth', 'html', 'css', 'sass', 'tailwind', 'bootstrap',
-    'redux', 'jest', 'webpack', 'babel', 'npm', 'yarn',
-    'bachelor', 'master', 'degree', 'certification', 'certified'
-  ];
-  
   for (const keyword of technicalKeywords) {
     if (lowerText.includes(keyword)) {
       const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
@@ -547,7 +545,6 @@ const extractBasicApplicantKeywords = (applicant: ApplicantData, jobKeywords?: s
 
 /**
  * Compare applicant keywords with job keywords and calculate score
- * This is the preferred method when we have extracted applicant keywords
  */
 const compareApplicantKeywordsWithJobKeywords = (applicantKeywords: string[], jobKeywords: string[]): number => {
   try {
@@ -559,59 +556,108 @@ const compareApplicantKeywordsWithJobKeywords = (applicantKeywords: string[], jo
     const unmatchedKeywords: string[] = [];
     let matchCount = 0;
 
-    // Normalize keywords for comparison
+    // Enhanced keyword normalization
     const normalizeKeyword = (keyword: string): string => {
-      return keyword
-        .toLowerCase()
-        .trim()
-        .replace(/\.js$/g, '')
-        .replace(/\.ts$/g, '')
-        .replace(/\+/g, '')
-        .replace(/\s+/g, ' ')
-        .replace(/['"]/g, '');
+      let s = keyword.toLowerCase().trim();
+      s = s.replace(/^['\"]+|['\"]+$/g, '');
+      
+      // Comprehensive canonical mappings
+      const variations: { [key: string]: string } = {
+        'react.js': 'react',
+        'reactjs': 'react',
+        'node.js': 'node',
+        'nodejs': 'node',
+        'express.js': 'express',
+        'expressjs': 'express',
+        'javascript': 'js',
+        'typescript': 'ts',
+        'postgresql': 'postgres',
+        'mongodb': 'mongodb',
+        'github': 'git',
+        'aws': 'amazon web services',
+        'ci/cd': 'cicd',
+        'ci cd': 'cicd',
+        'rest apis': 'rest api',
+        'mern': 'mongodb express react node',
+        'full stack': 'fullstack',
+        'fullstack': 'full stack',
+        '0-1 year': '0-1 years',
+        '1+ year': '1+ years',
+        '2+ year': '2+ years',
+        '3+ year': '3+ years'
+      };
+      
+      // Apply variations
+      for (const [variant, standard] of Object.entries(variations)) {
+        if (s.includes(variant)) {
+          s = s.replace(new RegExp(variant, 'gi'), standard);
+        }
+      }
+      
+      // Remove special characters and normalize spaces
+      s = s.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      return s;
     };
 
+    // Normalize all keywords
+    const normalizedJobKeywords = jobKeywords.map(k => normalizeKeyword(k));
+    const normalizedApplicantKeywords = applicantKeywords.map(k => normalizeKeyword(k));
+    
+    console.log('🔎 Normalized Job Keywords:', normalizedJobKeywords);
+    console.log('🔎 Normalized Applicant Keywords:', normalizedApplicantKeywords);
+
+    // Create a map of applicant keywords for faster lookup
+    const applicantKeywordMap = new Map<string, number>();
+    normalizedApplicantKeywords.forEach((keyword, index) => {
+      applicantKeywordMap.set(keyword, index);
+    });
+
     // Check each job keyword against applicant keywords
-    jobKeywords.forEach(jobKeyword => {
-      const normalizedJobKeyword = normalizeKeyword(jobKeyword);
+    jobKeywords.forEach((jobKeyword, index) => {
+      const normalizedJobKeyword = normalizedJobKeywords[index];
       let found = false;
 
-      // Try exact match first
-      for (const applicantKeyword of applicantKeywords) {
-        const normalizedApplicantKeyword = normalizeKeyword(applicantKeyword);
-        
-        if (normalizedJobKeyword === normalizedApplicantKeyword) {
-          matchCount++;
-          matchedKeywords.push(jobKeyword);
-          found = true;
-          break;
-        }
-        
-        // Try partial match (e.g., "React.js" matches "React")
-        const jobParts = normalizedJobKeyword.split(/[\s,.\-+]+/).filter(p => p.length > 2);
-        const applicantParts = normalizedApplicantKeyword.split(/[\s,.\-+]+/).filter(p => p.length > 2);
-        
-        if (jobParts.length > 0 && applicantParts.length > 0) {
-          // Check if significant parts match
-          const matchingParts = jobParts.filter(jp => 
-            applicantParts.some(ap => ap.includes(jp) || jp.includes(ap))
-          );
+      // Check for exact match
+      if (applicantKeywordMap.has(normalizedJobKeyword)) {
+        matchCount++;
+        matchedKeywords.push(jobKeyword);
+        found = true;
+      } else {
+        // Check for partial match with word boundaries
+        for (let i = 0; i < applicantKeywords.length; i++) {
+          const normalizedApplicantKeyword = normalizedApplicantKeywords[i];
           
-          if (matchingParts.length >= Math.ceil(jobParts.length * 0.6)) {
+          // Skip if already matched with this applicant keyword
+          if (matchedKeywords.includes(applicantKeywords[i])) {
+            continue;
+          }
+          
+          // Try partial match (e.g., "React.js" matches "React")
+          const jobParts = normalizedJobKeyword.split(' ').filter(p => p.length > 2);
+          const applicantParts = normalizedApplicantKeyword.split(' ').filter(p => p.length > 2);
+          
+          if (jobParts.length > 0 && applicantParts.length > 0) {
+            // Check if significant parts match
+            const matchingParts = jobParts.filter(jp => 
+              applicantParts.some(ap => ap.includes(jp) || jp.includes(ap))
+            );
+            
+            if (matchingParts.length >= Math.ceil(jobParts.length * 0.6)) {
+              matchCount++;
+              matchedKeywords.push(jobKeyword);
+              found = true;
+              break;
+            }
+          }
+          
+          // Try reverse partial match (one contains the other)
+          if (normalizedApplicantKeyword.includes(normalizedJobKeyword) || 
+              normalizedJobKeyword.includes(normalizedApplicantKeyword)) {
             matchCount++;
             matchedKeywords.push(jobKeyword);
             found = true;
             break;
           }
-        }
-        
-        // Try reverse partial match (applicant keyword contains job keyword or vice versa)
-        if (normalizedApplicantKeyword.includes(normalizedJobKeyword) || 
-            normalizedJobKeyword.includes(normalizedApplicantKeyword)) {
-          matchCount++;
-          matchedKeywords.push(jobKeyword);
-          found = true;
-          break;
         }
       }
 
@@ -620,8 +666,14 @@ const compareApplicantKeywordsWithJobKeywords = (applicantKeywords: string[], jo
       }
     });
 
-    // Calculate base score: (matched job keywords / total job keywords) * 100
+    // Calculate base score
     let score = Math.round((matchCount / jobKeywords.length) * 100);
+
+    console.log(`✅ Matched ${matchCount} / ${jobKeywords.length} job keywords`);
+    console.log('✅ Matched keywords:', matchedKeywords);
+    if (unmatchedKeywords.length > 0) {
+      console.log('⚠️ Unmatched job keywords:', unmatchedKeywords);
+    }
 
     // Add bonus for having multiple applicant keywords that match
     if (matchCount > 0 && applicantKeywords.length >= matchCount) {
@@ -629,10 +681,12 @@ const compareApplicantKeywordsWithJobKeywords = (applicantKeywords: string[], jo
       score = Math.min(100, score + coverageBonus);
     }
 
+    // NO MINIMUM SCORE FOR PARTIAL MATCHES - SCORE CAN BE 0 IF NO MATCHES
+    // Removed: if (matchCount > 0 && score < 30) { score = 30; }
+
     return score;
   } catch (error) {
     console.error('Error comparing applicant keywords with job keywords:', error);
-    // Fallback: simple percentage based on applicant keywords count
     return Math.min(50, Math.round((applicantKeywords.length / Math.max(jobKeywords.length, 1)) * 50));
   }
 };
@@ -693,12 +747,9 @@ export const compareKeywordsBasic = (keywords: string[], applicant: ApplicantDat
       score = Math.min(100, score + bonus);
     }
 
-    // Minimum score for substantial resume
-    if (score === 0 && resumeText.length > 500) {
-      score = 5;
-    } else if (score === 0 && resumeText.length > 200) {
-      score = 3;
-    }
+    // NO MINIMUM SCORE FOR PARTIAL MATCHES - SCORE CAN BE 0 IF NO MATCHES
+    // Removed: if (score === 0 && resumeText.length > 500) { score = 5; }
+    // Removed: if (score === 0 && resumeText.length > 200) { score = 3; }
 
     return score;
   } catch (error) {

@@ -33,6 +33,15 @@ const globalErrorHandler: ErrorRequestHandler = (
     statusCode = simplifiedError.statusCode;
     message = simplifiedError.message;
     errorMessages = simplifiedError.errorMessages;
+  } else if ((error as any)?.code === 11000) {
+    // Mongo duplicate key error (E11000)
+    statusCode = 400;
+    message = 'Duplicate field value entered';
+    const keyValues = (error as any).keyValue || {};
+    errorMessages = Object.keys(keyValues).map((field) => ({
+      path: field,
+      message: `${field} already exists`,
+    }));
   } else if (error instanceof ZodError) {
     const simplifiedError = handleZodError(error);
     statusCode = simplifiedError.statusCode;
