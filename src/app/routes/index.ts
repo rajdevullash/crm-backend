@@ -12,6 +12,8 @@ import { ResourceRoutes } from '../modules/resource/resource.route';
 import ActivityBadgeRoutes from '../modules/activityBadge/activityBadge.route';
 import formTemplateRoutes from '../modules/hiring/formTemplate.route';
 import applicationResponseRoutes from '../modules/hiring/applicationResponse.route';
+import { DepartmentRoutes } from '../modules/department/department.route';
+import { ApplicationStatusRoutes } from '../modules/hiring/applicationStatus.route';
 
 const router = express.Router();
 
@@ -67,6 +69,14 @@ const moduleRoutes = [
   {
     path: '/application-responses',
     route: applicationResponseRoutes,
+  },
+  {
+    path: '/departments',
+    route: DepartmentRoutes,
+  },
+  {
+    path: '/application-statuses',
+    route: ApplicationStatusRoutes,
   }
 ];
 

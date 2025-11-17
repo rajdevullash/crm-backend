@@ -3,6 +3,7 @@ import { ApplicationResponse } from './applicationResponse.model';
 import { Application } from './application.model';
 import { Job } from './job.model';
 import { FormTemplate } from './formTemplate.model';
+import { ApplicationStatus } from './applicationStatus.model';
 import catchAsync from '../../../shared/catchAsync';
 import sendResponse from '../../../shared/sendResponse';
 import multer from 'multer';
@@ -175,6 +176,24 @@ export const submitApplicationResponses = (req: Request, res: Response) => {
         });
       }
 
+      // Get default status for the job's department
+      let defaultStatus = 'pending';
+      try {
+        const defaultStatusDoc = await ApplicationStatus.findOne({
+          $or: [
+            { department: job.department, isDefault: true, isActive: true },
+            { department: null, isDefault: true, isActive: true },
+          ],
+        }).sort({ department: -1 }); // Prefer department-specific over global
+        
+        if (defaultStatusDoc) {
+          defaultStatus = defaultStatusDoc.name;
+        }
+      } catch (error) {
+        console.error('Error fetching default status:', error);
+        // Use 'pending' as fallback
+      }
+
       // Create application
       const applicationData = {
         jobId,
@@ -185,7 +204,7 @@ export const submitApplicationResponses = (req: Request, res: Response) => {
         resumeUrl,
         atsScore: 0, // Will be calculated later if needed
         extractedKeywords: [],
-        status: 'pending',
+        status: defaultStatus,
       };
 
       const application = await Application.create(applicationData);

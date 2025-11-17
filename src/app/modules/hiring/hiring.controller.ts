@@ -414,12 +414,35 @@ if (!atsScore || atsScore === 0) {
   }
 }
 
+// Get default status for the job's department
+let defaultStatus = 'pending';
+try {
+  const { ApplicationStatus } = await import('./applicationStatus.model');
+  const job = await Job.findById(req.body.jobId);
+  if (job) {
+    const defaultStatusDoc = await ApplicationStatus.findOne({
+      $or: [
+        { department: job.department, isDefault: true, isActive: true },
+        { department: null, isDefault: true, isActive: true },
+      ],
+    }).sort({ department: -1 }); // Prefer department-specific over global
+    
+    if (defaultStatusDoc) {
+      defaultStatus = defaultStatusDoc.name;
+    }
+  }
+} catch (error) {
+  console.error('Error fetching default status:', error);
+  // Use 'pending' as fallback
+}
+
 // Create application with calculated ATS score and keywords
 const applicationData = {
   ...req.body,
   resumeUrl,
   atsScore,
   extractedKeywords,
+  status: req.body.status || defaultStatus,
 };
 
 const application = await Application.create(applicationData);
