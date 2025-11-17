@@ -151,9 +151,19 @@ const extractBasicKeywords = (job: IJob): string[] => {
   const words = cleanText.split(/[\s,;.():]+/)
     .filter((word: string) => word.length > 2)
     .filter((word: string) => /^[A-Z]/.test(word)) // Starts with capital letter
-    .filter((word: string) => !/^(The|And|For|With|From|About|Role|Join|Looking|We|Are|You|Will|Can|Must|Should|Have)$/i.test(word));
+    .filter((word: string) => !/^(The|And|For|With|From|About|Role|Join|Looking|We|Are|You|Will|Can|Must|Should|Have|This|That|These|Those|What|When|Where|Why|How)$/i.test(word))
+    .filter((word: string) => !/^[A-Z][a-z]+$/.test(word) || word.length > 3); // Filter out common short words
   
-  return [...new Set(words)].slice(0, 20);
+  const uniqueWords = [...new Set(words)].slice(0, 20);
+  
+  if (uniqueWords.length > 0) {
+    console.log(`✅ Extracted ${uniqueWords.length} keywords from capitalized words using basic fallback`);
+    return uniqueWords;
+  }
+  
+  // If still no keywords, return empty array
+  console.log(`⚠️  No keywords could be extracted from job description`);
+  return [];
 };
 
 export default extractJobKeywords;

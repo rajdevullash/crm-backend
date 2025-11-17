@@ -26,27 +26,49 @@ const createJob = catchAsync(async (req: Request, res: Response) => {
   const job = await Job.create(jobData);
 
   // Extract keywords from job description in background
-  if (job.description) {
+  if (job.description && job.description.trim().length > 0) {
     try {
+      console.log(`🔍 Starting keyword extraction for job: ${job.title}`);
+      console.log(`📝 Description length: ${job.description.length} characters`);
+      
       const { extractJobKeywords } = await import('../../../helpers/jobKeywordExtractor');
       const keywords = await extractJobKeywords(job.toJSON());
       
-      // Update job with extracted keywords
-      job.extractedKeywords = keywords;
+      if (keywords && keywords.length > 0) {
+        // Update job with extracted keywords
+        job.extractedKeywords = keywords;
+        await job.save();
+        
+        console.log(`✅ Extracted and stored ${keywords.length} keywords for job: ${job.title}`);
+        console.log(`📋 Keywords: [${keywords.join(', ')}]`);
+      } else {
+        console.log(`⚠️  No keywords extracted for job: ${job.title}`);
+        // Set empty array if no keywords found
+        job.extractedKeywords = [];
+        await job.save();
+      }
+    } catch (error: any) {
+      console.error('❌ Error extracting keywords for job:', error);
+      console.error('Error details:', error.message || error);
+      // Set empty array on error
+      job.extractedKeywords = [];
       await job.save();
-      
-      console.log(`✅ Extracted and stored ${keywords.length} keywords for job: ${job.title}`);
-    } catch (error) {
-      console.error('Error extracting keywords for job:', error);
       // Don't fail job creation if keyword extraction fails
     }
+  } else {
+    console.log('⚠️  No job description provided, skipping keyword extraction');
+    job.extractedKeywords = [];
+    await job.save();
   }
+
+  // Fetch the updated job to include keywords in response
+  const updatedJob = await Job.findById(job._id);
 
   sendResponse(res, {
     statusCode: 201,
     success: true,
     message: 'Job created successfully',
-    data: job,
+    data: updatedJob || job,
   });
 });
 
@@ -98,6 +120,28 @@ const getAllJobs = catchAsync(async (req: Request, res: Response) => {
     { $sort: { statusPriority: 1, postedDate: -1 } },
     { $skip: skip },
     { $limit: limit },
+    // Ensure extractedKeywords field is included
+    {
+      $project: {
+        _id: 1,
+        title: 1,
+        department: 1,
+        location: 1,
+        type: 1,
+        salary: 1,
+        vacancy: 1,
+        description: 1,
+        extractedKeywords: { $ifNull: ['$extractedKeywords', []] },
+        status: 1,
+        postedBy: 1,
+        postedDate: 1,
+        closedDate: 1,
+        applicantCount: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        statusPriority: 1,
+      },
+    },
   ]);
 
   const total = await Job.countDocuments(conditions);
@@ -154,6 +198,31 @@ const getSingleJob = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+// Extract keywords for existing job (helper function)
+const extractKeywordsForJob = async (jobId: string) => {
+  try {
+    const job = await Job.findById(jobId);
+    if (!job || !job.description || job.description.trim().length === 0) {
+      return;
+    }
+
+    console.log(`🔍 Extracting keywords for existing job: ${job.title}`);
+    const { extractJobKeywords } = await import('../../../helpers/jobKeywordExtractor');
+    const keywords = await extractJobKeywords(job.toJSON());
+    
+    if (keywords && keywords.length > 0) {
+      job.extractedKeywords = keywords;
+      await job.save();
+      console.log(`✅ Extracted and stored ${keywords.length} keywords for job: ${job.title}`);
+      console.log(`📋 Keywords: [${keywords.join(', ')}]`);
+    } else {
+      console.log(`⚠️  No keywords extracted for job: ${job.title}`);
+    }
+  } catch (error: any) {
+    console.error('❌ Error extracting keywords for job:', error);
+  }
+};
+
 const updateJob = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
 
@@ -174,11 +243,22 @@ const updateJob = catchAsync(async (req: Request, res: Response) => {
     });
   }
 
+  // If description was updated, re-extract keywords
+  if (updateData.description && updateData.description.trim().length > 0) {
+    // Extract keywords in background (don't wait for it)
+    extractKeywordsForJob(id).catch((error) => {
+      console.error('Error extracting keywords after job update:', error);
+    });
+  }
+
+  // Fetch updated job to include any newly extracted keywords
+  const updatedJob = await Job.findById(id);
+
   sendResponse(res, {
     statusCode: 200,
     success: true,
     message: 'Job updated successfully',
-    data: job,
+    data: updatedJob || job,
   });
 });
 

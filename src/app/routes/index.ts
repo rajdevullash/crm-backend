@@ -10,6 +10,8 @@ import { HiringRoutes } from '../modules/hiring/hiring.route';
 import { PermissionRoutes } from '../modules/permission/permission.route';
 import { ResourceRoutes } from '../modules/resource/resource.route';
 import ActivityBadgeRoutes from '../modules/activityBadge/activityBadge.route';
+import formTemplateRoutes from '../modules/hiring/formTemplate.route';
+import applicationResponseRoutes from '../modules/hiring/applicationResponse.route';
 
 const router = express.Router();
 
@@ -57,6 +59,14 @@ const moduleRoutes = [
   {
     path: '/activity-badge',
     route: ActivityBadgeRoutes,
+  },
+  {
+    path: '/form-templates',
+    route: formTemplateRoutes,
+  },
+  {
+    path: '/application-responses',
+    route: applicationResponseRoutes,
   }
 ];
 
