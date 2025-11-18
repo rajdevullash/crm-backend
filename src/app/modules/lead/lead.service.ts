@@ -192,11 +192,11 @@ const updateLead = async (
   console.log('id', id);
   
   // Clean up empty string values that should be undefined (for ObjectId fields)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   if ((payload.assignedTo as any) === '' || payload.assignedTo === null) {
     delete payload.assignedTo;
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   if ((payload.stage as any) === '' || payload.stage === null) {
     delete payload.stage;
   }
@@ -377,9 +377,9 @@ const updateLead = async (
   ];
 
   for (const field of fieldsToTrack) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    
     const payloadValue = (payload as any)[field.key];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    
     const existingValue = (existingLead as any)[field.key];
     
     if (payloadValue !== undefined) {
@@ -1019,7 +1019,7 @@ const reorderLeads = async (leadOrders: { leadId: string; order: number }[]): Pr
 
 // Get all activities from all leads (for global activity log)
 const getAllActivities = async (query: Record<string, unknown>): Promise<IGenericResponse<any[]>> => {
-  const { userId, role, page, limit } = query;
+  const { userId, role, page, limit, assignedTo } = query;
 
   // Build query conditions based on user role
   const whereConditions: any = {};
@@ -1029,7 +1029,11 @@ const getAllActivities = async (query: Record<string, unknown>): Promise<IGeneri
   if (role === 'representative' && userId && userId !== 'undefined' && userId !== 'null') {
     whereConditions.assignedTo = userId;
   }
-  // Admin and super_admin see all activities
+  // Admin and super_admin can filter by assignedTo if provided
+  else if ((role === 'admin' || role === 'super_admin') && assignedTo && assignedTo !== 'undefined' && assignedTo !== 'null' && assignedTo !== 'all') {
+    whereConditions.assignedTo = assignedTo;
+  }
+  // Admin and super_admin see all activities if no filter is provided
 
   // Calculate pagination
   const paginationOptions: IPaginationOptions = {
