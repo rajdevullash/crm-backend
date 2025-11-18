@@ -14,6 +14,7 @@ import formTemplateRoutes from '../modules/hiring/formTemplate.route';
 import applicationResponseRoutes from '../modules/hiring/applicationResponse.route';
 import { DepartmentRoutes } from '../modules/department/department.route';
 import { ApplicationStatusRoutes } from '../modules/hiring/applicationStatus.route';
+import { PayslipRoutes } from '../modules/payslip/payslip.route';
 
 const router = express.Router();
 
@@ -77,6 +78,10 @@ const moduleRoutes = [
   {
     path: '/application-statuses',
     route: ApplicationStatusRoutes,
+  },
+  {
+    path: '/payslips',
+    route: PayslipRoutes,
   }
 ];
 
