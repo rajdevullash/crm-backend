@@ -396,7 +396,7 @@ const deleteResource = async (id: string): Promise<{ resource: IResource | null;
 
 const addAttachment = async (
   id: string,
-  attachment: { name: string; url: string },
+  attachment: { name: string; url: string; documentType?: string },
   userId?: string,
   userName?: string,
   userRole?: string

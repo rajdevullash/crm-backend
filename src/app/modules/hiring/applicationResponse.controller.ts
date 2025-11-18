@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from 'express';
 import { ApplicationResponse } from './applicationResponse.model';
 import { Application } from './application.model';
@@ -13,7 +14,23 @@ import fs from 'fs';
 // Multer configuration for dynamic file fields
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadFolder = path.join(__dirname, '../../../uploads/resumes');
+    // Save to backend/uploads/resumes (not backend/src/uploads/resumes)
+    // This matches where static files are served from
+    // Use process.cwd() to get backend root, or resolve from __dirname
+    let uploadFolder: string;
+    if (__dirname.includes('dist')) {
+      // In compiled code, __dirname is backend/dist/app/modules/hiring
+      // Go up 3 levels to backend root
+      uploadFolder = path.join(__dirname, '../../../uploads/resumes');
+    } else {
+      // In source code, __dirname is backend/src/app/modules/hiring
+      // Go up 3 levels to backend root
+      uploadFolder = path.join(__dirname, '../../../uploads/resumes');
+    }
+    // Fallback to process.cwd() if path resolution fails
+    if (!fs.existsSync(path.dirname(uploadFolder))) {
+      uploadFolder = path.join(process.cwd(), 'uploads/resumes');
+    }
     if (!fs.existsSync(uploadFolder)) {
       fs.mkdirSync(uploadFolder, { recursive: true });
     }
@@ -26,6 +43,7 @@ const storage = multer.diskStorage({
   },
 });
 
+// eslint-disable-next-line no-undef
 const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedMimeTypes = [
     'application/pdf',
@@ -111,6 +129,7 @@ export const submitApplicationResponses = (req: Request, res: Response) => {
       }
 
       // Map uploaded files by field name
+      // eslint-disable-next-line no-undef
       const files = req.files as Express.Multer.File[];
       if (files && files.length > 0) {
         files.forEach((file) => {
@@ -194,6 +213,77 @@ export const submitApplicationResponses = (req: Request, res: Response) => {
         // Use 'pending' as fallback
       }
 
+      // Calculate ATS score and extract keywords if resume is available
+      let atsScore = 0;
+      let extractedKeywords: string[] = [];
+      
+      if (resumeUrl && resumeUrl !== '/uploads/resumes/default.pdf') {
+        console.log(`🔍 Calculating ATS score for application to job: ${job.title}`);
+        console.log(`📁 Resume path: ${resumeUrl}`);
+
+        try {
+          // Extract text from resume
+          console.log('═══════════════════════════════════════════════');
+          console.log('🔍 RESUME PARSING - STEP BY STEP DEBUG');
+          console.log('═════════════════════════════════════════════════');
+          console.log(`📁 Step 1: Resume file path: ${resumeUrl}`);
+
+          const { extractResumeText, isLikelyResume } = await import('../../../helpers/resumeParser');
+          console.log('📝 Step 2: Calling extractResumeText function...');
+
+          const resumeText = await extractResumeText(resumeUrl);
+
+          console.log('═════════════════════════════════════════════════');
+          console.log(`📄 Step 3: Resume text extraction result`);
+          console.log(`📊 Text length: ${resumeText.length} characters`);
+          if (resumeText.length > 0) {
+            console.log(`📄 Text preview (first 500 chars):\n${resumeText.substring(0, 500)}`);
+          }
+          console.log('═════════════════════════════════════════════════');
+
+          if (resumeText && resumeText.trim().length > 0) {
+            // Check if the document is likely a resume
+            const isResume = isLikelyResume(resumeText);
+            
+            if (isResume) {
+              console.log('✅ Resume text extracted and validated successfully');
+              console.log('🔍 Step 4: Starting ATS score calculation...');
+              
+              // Calculate ATS score using resume text
+              const { calculateATSScore } = await import('../../helpers/atsCalculator');
+              
+              const result = await calculateATSScore(job, {
+                resumeText,
+                location: location || '',
+                coverLetter: '',
+                name: name,
+                email: email,
+                phone: phone,
+              });
+              
+              atsScore = result.score;
+              extractedKeywords = result.applicantKeywords || [];
+              
+              console.log(`✅ ATS Score calculated: ${atsScore}%`);
+              console.log(`📋 Applicant Keywords extracted: ${extractedKeywords.length} keywords -> [${extractedKeywords.join(', ')}]`);
+            } else {
+              console.log('⚠️  Document does not appear to be a resume');
+              atsScore = 0;
+              extractedKeywords = [];
+            }
+          } else {
+            console.log('❌ ERROR: Resume text is empty! Cannot proceed with ATS calculation.');
+            atsScore = 0;
+            extractedKeywords = [];
+          }
+        } catch (error: any) {
+          console.error('Error calculating ATS score:', error);
+          // Continue with default values if ATS calculation fails
+          atsScore = 0;
+          extractedKeywords = [];
+        }
+      }
+
       // Create application
       const applicationData = {
         jobId,
@@ -202,8 +292,8 @@ export const submitApplicationResponses = (req: Request, res: Response) => {
         phone,
         location,
         resumeUrl,
-        atsScore: 0, // Will be calculated later if needed
-        extractedKeywords: [],
+        atsScore,
+        extractedKeywords,
         status: defaultStatus,
       };
 

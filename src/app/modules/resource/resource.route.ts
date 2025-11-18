@@ -15,7 +15,19 @@ const router = express.Router();
 // Configure multer for resource attachments
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = path.join(process.cwd(), 'uploads', 'resources');
+    // Save to backend/uploads/resources (or backend/src/uploads/resources in source)
+    let uploadPath: string;
+    if (__dirname.includes('dist')) {
+      // In compiled code, __dirname is backend/dist/app/modules/resource
+      uploadPath = path.join(__dirname, '../../../uploads/resources');
+    } else {
+      // In source code, __dirname is backend/src/app/modules/resource
+      // Try to save to backend/uploads/resources first, fallback to src/uploads/resources
+      uploadPath = path.join(__dirname, '../../../uploads/resources');
+      if (!fs.existsSync(path.dirname(uploadPath))) {
+        uploadPath = path.join(process.cwd(), 'uploads', 'resources');
+      }
+    }
     // Create directory if it doesn't exist
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });

@@ -24,16 +24,72 @@ if (typeof globalThis.DOMMatrix === 'undefined') {
 export const extractResumeText = async (resumeUrl: string): Promise<string> => {
   try {
     // Clean path and get full file path
+    // Resume URL format: /uploads/resumes/filename.pdf
+    // We need to resolve it relative to the backend root directory
     const cleanPath = resumeUrl.startsWith('/') ? resumeUrl.substring(1) : resumeUrl;
-    const fullPath = path.join(process.cwd(), cleanPath);
     
-    console.log(`📄 Parsing resume: ${fullPath}`);
+    // Try multiple path resolution strategies
+    let fullPath = '';
+    
+    // Try multiple path resolution strategies
+    // Files are saved relative to where multer configs are located
+    // applicationResponse.controller.ts saves to: path.join(__dirname, '../../../uploads/resumes')
+    // where __dirname in source = backend/src/app/modules/hiring
+    // so ../../../uploads/resumes = backend/src/uploads/resumes
+    
+    const possiblePaths: string[] = [];
+    const backendRoot = process.cwd();
+    
+    // Strategy 1: Try with src/ prefix explicitly (MOST LIKELY - files are saved here by multer)
+    // Files are saved to backend/src/uploads/resumes/ by applicationResponse.controller.ts
+    possiblePaths.push(path.join(backendRoot, 'src', cleanPath));
+    
+    // Strategy 2: Relative to __dirname (for source code: backend/src/helpers)
+    // Go up 2 levels to backend/src, then add uploads/resumes
+    const srcBackendRoot = path.join(__dirname, '../../');
+    possiblePaths.push(path.join(srcBackendRoot, cleanPath));
+    
+    // Strategy 3: process.cwd() (backend root) - standard location
+    possiblePaths.push(path.join(backendRoot, cleanPath));
+    
+    // Strategy 4: If in dist, try going to src folder
+    if (__dirname.includes('dist')) {
+      const srcRoot = __dirname.replace(/dist/g, 'src');
+      possiblePaths.push(path.join(srcRoot, '../', cleanPath));
+      // Also try going up from dist to backend root
+      const distBackendRoot = path.join(__dirname, '../../../');
+      possiblePaths.push(path.join(distBackendRoot, cleanPath));
+    }
+    
+    // Strategy 5: Absolute path resolution
+    const calculatedBackendRoot = path.resolve(__dirname, '../../');
+    possiblePaths.push(path.join(calculatedBackendRoot, cleanPath));
+    
+    // Try each path until we find the file
+    let foundPath = false;
+    for (const testPath of possiblePaths) {
+      if (fs.existsSync(testPath)) {
+        fullPath = testPath;
+        foundPath = true;
+        console.log(`✅ Found resume file at: ${fullPath}`);
+        break;
+      }
+    }
     
     // Check if file exists
-    if (!fs.existsSync(fullPath)) {
-      console.log(`⚠️  Resume file not found: ${fullPath}`);
+    if (!foundPath || !fs.existsSync(fullPath)) {
+      console.log(`⚠️  Resume file not found after trying ${possiblePaths.length} paths`);
+      console.log(`📁 process.cwd(): ${process.cwd()}`);
+      console.log(`📁 __dirname: ${__dirname}`);
+      console.log(`📁 cleanPath: ${cleanPath}`);
+      console.log(`⚠️  Tried paths:`);
+      possiblePaths.forEach((p, i) => {
+        console.log(`   ${i + 1}. ${p} ${fs.existsSync(p) ? '✅ EXISTS' : '❌ NOT FOUND'}`);
+      });
       return '';
     }
+    
+    console.log(`📄 Parsing resume: ${fullPath}`);
 
     // Check file extension
     const ext = path.extname(fullPath).toLowerCase();

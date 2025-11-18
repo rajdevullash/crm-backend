@@ -98,6 +98,7 @@ export interface IResource {
   attachments: Array<{
     name: string;
     url: string;
+    documentType?: 'NID' | 'Offer Letter' | 'Appointment Letter' | 'Experience Letter' | 'Contract' | 'Resume' | 'Certificate' | 'Other';
     uploadedAt: Date;
     uploadedBy?: {
       id: string;

@@ -140,16 +140,25 @@ const deleteResource = catchAsync(async (req: Request, res: Response) => {
 const addAttachment = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   const user = (req as any).user;
-  const files = req.files as { [fieldname: string]: Express.Multer.File[] };
   
-  let attachmentUrl = req.body.url;
-  if (files && files.attachment && files.attachment[0]) {
-    attachmentUrl = `/uploads/resources/${files.attachment[0].filename}`;
+  // multer.single() puts file in req.file, not req.files
+  const file = req.file as Express.Multer.File;
+  
+  if (!file) {
+    return sendResponse(res, {
+      statusCode: 400,
+      success: false,
+      message: 'No file uploaded',
+      data: null,
+    });
   }
 
+  const attachmentUrl = `/uploads/resources/${file.filename}`;
+
   const attachment = {
-    name: req.body.name || files?.attachment?.[0]?.originalname || 'Attachment',
+    name: req.body.name || file.originalname || 'Attachment',
     url: attachmentUrl,
+    documentType: req.body.documentType || 'Other',
   };
 
   const result = await ResourceService.addAttachment(

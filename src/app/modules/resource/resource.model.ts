@@ -82,6 +82,12 @@ const attachmentSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     url: { type: String, required: true, trim: true },
+    documentType: { 
+      type: String, 
+      enum: ['NID', 'Offer Letter', 'Appointment Letter', 'Experience Letter', 'Contract', 'Resume', 'Certificate', 'Other'],
+      default: 'Other',
+      trim: true 
+    },
     uploadedAt: { type: Date, default: Date.now },
     uploadedBy: {
       id: { type: String },
