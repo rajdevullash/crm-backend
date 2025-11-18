@@ -1,4 +1,4 @@
-export interface IDepartment {
+export type IDepartment = {
   _id?: string;
   name: string;
   description?: string;

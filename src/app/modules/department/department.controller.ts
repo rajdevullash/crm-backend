@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import httpStatus from 'http-status';
+import ApiError from '../../../errors/ApiError';
 import catchAsync from '../../../shared/catchAsync';
 import sendResponse from '../../../shared/sendResponse';
 import { Department } from './department.model';
@@ -8,6 +9,10 @@ import { IDepartment } from './department.interface';
 // Create department (only admin/super admin)
 const createDepartment = catchAsync(async (req: Request, res: Response) => {
   const user = req.user;
+  
+  if (!user) {
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'User not authenticated');
+  }
   
   const departmentData = {
     name: req.body.name,
@@ -35,8 +40,9 @@ const getAllDepartments = catchAsync(async (req: Request, res: Response) => {
   
   // If user is admin or super admin, show only departments created by admin/super admin
   // HR users can see all departments created by admin/super admin
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let filter: any = {};
-  if (user.role === 'admin' || user.role === 'super_admin' || user.role === 'hr') {
+  if (user && (user.role === 'admin' || user.role === 'super_admin' || user.role === 'hr')) {
     filter = {
       'createdBy.role': { $in: ['admin', 'super_admin'] },
     };

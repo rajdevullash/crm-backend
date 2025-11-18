@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import httpStatus from 'http-status';
+import ApiError from '../../../errors/ApiError';
 import catchAsync from '../../../shared/catchAsync';
 import sendResponse from '../../../shared/sendResponse';
 import { ApplicationStatus } from './applicationStatus.model';
@@ -8,6 +9,10 @@ import { IApplicationStatus } from './applicationStatus.interface';
 // Create application status
 const createApplicationStatus = catchAsync(async (req: Request, res: Response) => {
   const user = req.user;
+  
+  if (!user) {
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'User not authenticated');
+  }
   
   // If setting as default, unset other defaults for the same department
   if (req.body.isDefault) {
