@@ -186,6 +186,42 @@ const addAttachment = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const updateAttachment = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { attachmentIndex, name, documentType } = req.body;
+
+  if (attachmentIndex === undefined) {
+    return sendResponse(res, {
+      statusCode: 400,
+      success: false,
+      message: 'Attachment index is required',
+      data: null,
+    });
+  }
+
+  const updateData: { name?: string; documentType?: string } = {};
+  if (name !== undefined) updateData.name = name;
+  if (documentType !== undefined) updateData.documentType = documentType;
+
+  const result = await ResourceService.updateAttachment(id, attachmentIndex, updateData);
+
+  if (!result) {
+    return sendResponse(res, {
+      statusCode: 404,
+      success: false,
+      message: 'Resource not found',
+      data: null,
+    });
+  }
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Attachment updated successfully',
+    data: result,
+  });
+});
+
 const removeAttachment = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { attachmentIndex } = req.body;
@@ -216,6 +252,7 @@ export const ResourceController = {
   updateResource,
   deleteResource,
   addAttachment,
+  updateAttachment,
   removeAttachment,
 };
 

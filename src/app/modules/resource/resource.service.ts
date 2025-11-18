@@ -416,6 +416,31 @@ const addAttachment = async (
   return resource;
 };
 
+const updateAttachment = async (
+  id: string,
+  attachmentIndex: number,
+  updateData: { name?: string; documentType?: string }
+): Promise<IResource | null> => {
+  const resource = await Resource.findById(id);
+  if (!resource) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'Resource not found');
+  }
+
+  if (attachmentIndex < 0 || attachmentIndex >= resource.attachments.length) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid attachment index');
+  }
+
+  if (updateData.name) {
+    resource.attachments[attachmentIndex].name = updateData.name;
+  }
+  if (updateData.documentType) {
+    resource.attachments[attachmentIndex].documentType = updateData.documentType as any;
+  }
+
+  await resource.save();
+  return resource;
+};
+
 const removeAttachment = async (id: string, attachmentIndex: number): Promise<IResource | null> => {
   const resource = await Resource.findById(id);
   if (!resource) {
@@ -439,6 +464,7 @@ export const ResourceService = {
   updateResource,
   deleteResource,
   addAttachment,
+  updateAttachment,
   removeAttachment,
 };
 

@@ -97,6 +97,13 @@ router.post(
   ResourceController.addAttachment
 );
 
+router.patch(
+  '/:id/attachments',
+  auth(ENUM_USER_ROLE.HR, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.SUPER_ADMIN),
+  checkPermission(ENUM_PERMISSION.HR_RESOURCE_EDIT),
+  ResourceController.updateAttachment
+);
+
 router.delete(
   '/:id/attachments',
   auth(ENUM_USER_ROLE.HR, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.SUPER_ADMIN),
