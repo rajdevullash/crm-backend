@@ -46,10 +46,11 @@ app.use(express.urlencoded({ extended: true }));
 // Try multiple locations to handle both source and compiled code
 // Priority: Check where files are actually saved first
 const possibleUploadPaths = [
-  path.join(process.cwd(), 'src/uploads'), // Backend/src/uploads (where files are actually saved - HIGHEST PRIORITY)
+  path.join(process.cwd(), 'uploads'), // Backend root/uploads (where files are actually saved - HIGHEST PRIORITY)
+  path.join(__dirname, '../../uploads'), // Backend root/uploads (if __dirname is in app/)
+  path.join(process.cwd(), 'src/uploads'), // Backend/src/uploads (fallback)
   path.join(__dirname, '../../src/uploads'), // Source code location (if __dirname is in app/)
   path.join(__dirname, '../uploads'), // Standard: backend/src/uploads (source) or backend/dist/uploads (compiled)
-  path.join(process.cwd(), 'uploads'), // Backend root (fallback)
 ];
 
 let uploadsPath = possibleUploadPaths[0];
@@ -60,9 +61,17 @@ for (const testPath of possibleUploadPaths) {
   }
 }
 
-app.use('/uploads', express.static(uploadsPath));
-console.log('Static files served from:', uploadsPath);
-console.log('Available upload paths checked:', possibleUploadPaths);
+// Serve static files with proper headers
+app.use('/uploads', express.static(uploadsPath, {
+  setHeaders: (res, filePath) => {
+    // Set CORS headers for static files
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+  }
+}));
+console.log('✅ Static files served from:', uploadsPath);
+console.log('📁 Available upload paths checked:', possibleUploadPaths);
 
 app.use('/api/v1', routes);
 
@@ -79,17 +88,10 @@ app.use(globalErrorHandler);
 //handle not found
 app.use((req: Request, res: Response, next: NextFunction) => {
   // Don't return API error for static file requests - let them return 404 naturally
+  // Static files are handled by express.static middleware above
   if (req.originalUrl.startsWith('/uploads/')) {
-    return res.status(httpStatus.NOT_FOUND).json({
-      success: false,
-      message: 'File Not Found',
-      errorMessages: [
-        {
-          path: req.originalUrl,
-          message: 'The requested file could not be found',
-        },
-      ],
-    });
+    // Let express.static handle 404 for static files - don't interfere
+    return res.status(httpStatus.NOT_FOUND).send('File Not Found');
   }
   
   res.status(httpStatus.NOT_FOUND).json({
