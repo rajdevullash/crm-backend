@@ -2,26 +2,27 @@ export type WorkMode = 'on-site' | 'remote';
 export type JobType = 'permanent' | 'internship';
 export type JobStatus = 'confirmed' | 'probation' | 'resigned';
 
-export interface IAddress {
+export type IAddress = {
   street: string;
   city: string;
   zipCode: string;
   country: string;
 }
 
-export interface IBankDetails {
-  name: string;
+export type IBankDetails = {
+  beneficiaryName: string;
+  beneficiaryAccount: string;
   accountNumber: string;
   routingNumber: string;
 }
 
-export interface IEmergencyContact {
+export type IEmergencyContact = {
   name: string;
   phone: string;
   relation: string;
 }
 
-export interface IJobHistory {
+export type IJobHistory = {
   workMode: WorkMode;
   jobType: JobType;
   jobStatus: JobStatus;
@@ -37,7 +38,7 @@ export interface IJobHistory {
   changeReason?: string;
 }
 
-export interface ISalaryHistory {
+export type ISalaryHistory = {
   salary: number;
   percentageChange?: number;
   changedAt: Date;
@@ -49,7 +50,7 @@ export interface ISalaryHistory {
   changeReason?: string;
 }
 
-export interface IPositionHistory {
+export type IPositionHistory = {
   position: string;
   department: string;
   changedAt: Date;
@@ -61,7 +62,7 @@ export interface IPositionHistory {
   changeReason?: string;
 }
 
-export interface IResource {
+export type IResource = {
   _id?: string;
   // Personal Information
   name: string;
@@ -123,7 +124,7 @@ export interface IResource {
   updatedAt?: Date;
 }
 
-export interface IResourceFilters {
+  export type IResourceFilters = {
   searchTerm?: string;
   department?: string;
   position?: string;

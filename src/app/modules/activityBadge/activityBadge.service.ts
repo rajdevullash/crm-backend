@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import mongoose from 'mongoose';
 import { ActivityBadge } from './activityBadge.model';
 import { Lead } from '../lead/lead.model';
 import { User } from '../auth/auth.model';
+import { StandaloneActivity } from '../standaloneActivity/standaloneActivity.model';
 
 // Helper function to get today's date string (YYYY-MM-DD)
 const getTodayDateString = (): string => {
@@ -242,7 +244,7 @@ export const resetActivityBadgesForDate = async (date: string): Promise<number> 
   }
 };
 
-// Daily cron job: Reset all badges for today (should run at start of day)
+// Daily cron job: Reset all badges for today and send email notifications
 export const initializeActivityBadgeCron = (): void => {
   // Import cron at runtime to avoid issues
   import('node-cron').then((cron) => {
@@ -252,6 +254,173 @@ export const initializeActivityBadgeCron = (): void => {
       const date = getTodayDateString();
       const count = await resetActivityBadgesForDate(date);
       console.log(`✅ Daily reset: Cleared ${count} activity badge viewed status for ${date}`);
+      
+      // Send email notifications for today's activities
+      try {
+        const { sendTodayActivityReminderEmail } = await import('../../../shared/emailService');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        // Get all leads with activities for today
+        const leads = await Lead.find({
+          activities: {
+            $elemMatch: {
+              date: {
+                $gte: today,
+                $lt: tomorrow,
+              },
+              completed: false,
+            },
+          },
+        })
+          .populate('assignedTo', 'name email')
+          .populate('createdBy', 'name email')
+          .select('title name activities assignedTo createdBy');
+
+        // Get all standalone activities for today
+        const standaloneActivities = await StandaloneActivity.find({
+          date: {
+            $gte: today,
+            $lt: tomorrow,
+          },
+          completed: false,
+        })
+          .populate('addedBy', 'name email')
+          .select('type date addedBy');
+
+        // Track users and their activities to send consolidated emails
+        const userActivityMap = new Map<string, {
+          user: any;
+          activities: Array<{
+            type: string;
+            leadTitle?: string;
+            leadName?: string;
+            isStandalone?: boolean;
+          }>;
+        }>();
+
+        // Process each lead's activities
+        leads.forEach((lead: any) => {
+          if (!lead.activities || lead.activities.length === 0) return;
+
+          const todayActivities = lead.activities.filter((activity: any) => {
+            const activityDate = activity.type === 'meeting' && activity.meetingDate 
+              ? new Date(activity.meetingDate)
+              : new Date(activity.date);
+            activityDate.setHours(0, 0, 0, 0);
+            return activityDate.getTime() === today.getTime() && !activity.completed;
+          });
+
+          if (todayActivities.length === 0) return;
+
+          // Add activities for assigned user
+          if (lead.assignedTo) {
+            const assignedUserId = typeof lead.assignedTo._id === 'string'
+              ? lead.assignedTo._id
+              : lead.assignedTo._id.toString();
+            
+            if (!userActivityMap.has(assignedUserId)) {
+              userActivityMap.set(assignedUserId, {
+                user: lead.assignedTo,
+                activities: [],
+              });
+            }
+
+            const userData = userActivityMap.get(assignedUserId)!;
+            todayActivities.forEach((activity: any) => {
+              userData.activities.push({
+                type: activity.type,
+                leadTitle: lead.title,
+                leadName: lead.name,
+                isStandalone: false,
+              });
+            });
+          }
+
+          // Add activities for created user (if different from assigned)
+          if (lead.createdBy) {
+            const createdUserId = typeof lead.createdBy._id === 'string'
+              ? lead.createdBy._id
+              : lead.createdBy._id.toString();
+            
+            const assignedUserId = lead.assignedTo
+              ? (typeof lead.assignedTo._id === 'string' ? lead.assignedTo._id : lead.assignedTo._id.toString())
+              : null;
+
+            // Only add if different from assigned user
+            if (createdUserId !== assignedUserId) {
+              if (!userActivityMap.has(createdUserId)) {
+                userActivityMap.set(createdUserId, {
+                  user: lead.createdBy,
+                  activities: [],
+                });
+              }
+
+              const userData = userActivityMap.get(createdUserId)!;
+              todayActivities.forEach((activity: any) => {
+                userData.activities.push({
+                  type: activity.type,
+                  leadTitle: lead.title,
+                  leadName: lead.name,
+                  isStandalone: false,
+                });
+              });
+            }
+          }
+        });
+
+        // Process standalone activities
+        standaloneActivities.forEach((activity: any) => {
+          if (!activity.addedBy) return;
+
+          const addedUserId = typeof activity.addedBy._id === 'string'
+            ? activity.addedBy._id
+            : activity.addedBy._id.toString();
+
+          if (!userActivityMap.has(addedUserId)) {
+            userActivityMap.set(addedUserId, {
+              user: activity.addedBy,
+              activities: [],
+            });
+          }
+
+          const userData = userActivityMap.get(addedUserId)!;
+          userData.activities.push({
+            type: activity.type,
+            isStandalone: true,
+          });
+        });
+
+        // Send emails to all users with activities
+        const emailPromises: Promise<void>[] = [];
+        userActivityMap.forEach((userData) => {
+          if (userData.user && userData.user.email && userData.activities.length > 0) {
+            // Send email for the first activity (or a summary)
+            const firstActivity = userData.activities[0];
+            emailPromises.push(
+              sendTodayActivityReminderEmail({
+                userEmail: userData.user.email,
+                userName: userData.user.name,
+                activityType: firstActivity.type,
+                activityDate: today,
+                leadTitle: firstActivity.leadTitle,
+                leadName: firstActivity.leadName,
+                activityCount: userData.activities.length,
+                isStandalone: firstActivity.isStandalone,
+              }).catch((error) => {
+                console.error(`❌ Error sending email to ${userData.user.email}:`, error);
+              })
+            );
+          }
+        });
+
+        await Promise.all(emailPromises);
+        console.log(`📧 Sent ${emailPromises.length} activity reminder email(s) for today's activities`);
+      } catch (emailError) {
+        console.error('❌ Error sending activity reminder emails:', emailError);
+      }
       
       // Emit socket event to refresh activity badge for all users
       try {

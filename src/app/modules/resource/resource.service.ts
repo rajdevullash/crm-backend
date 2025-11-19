@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import httpStatus from 'http-status';
-import mongoose from 'mongoose';
+
 import ApiError from '../../../errors/ApiError';
 import { IResource, IResourceFilters } from './resource.interface';
 import { Resource } from './resource.model';

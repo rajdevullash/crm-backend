@@ -13,7 +13,8 @@ const addressSchema = new Schema(
 
 const bankDetailsSchema = new Schema(
   {
-    name: { type: String, required: true, trim: true, default: 'To be updated' },
+    beneficiaryName: { type: String, required: true, trim: true, default: 'To be updated' },
+    beneficiaryAccount: { type: String, required: true, trim: true, default: 'To be updated' },
     accountNumber: { type: String, required: true, trim: true, default: 'To be updated' },
     routingNumber: { type: String, required: true, trim: true, default: 'To be updated' },
   },

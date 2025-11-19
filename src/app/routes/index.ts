@@ -15,6 +15,7 @@ import applicationResponseRoutes from '../modules/hiring/applicationResponse.rou
 import { DepartmentRoutes } from '../modules/department/department.route';
 import { ApplicationStatusRoutes } from '../modules/hiring/applicationStatus.route';
 import { PayslipRoutes } from '../modules/payslip/payslip.route';
+import standaloneActivityRoutes from '../modules/standaloneActivity/standaloneActivity.route';
 
 const router = express.Router();
 
@@ -82,6 +83,10 @@ const moduleRoutes = [
   {
     path: '/payslips',
     route: PayslipRoutes,
+  },
+  {
+    path: '/standalone-activities',
+    route: standaloneActivityRoutes,
   }
 ];
 

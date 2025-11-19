@@ -48,7 +48,7 @@ app.use(express.urlencoded({ extended: true }));
 const possibleUploadPaths = [
   path.join(process.cwd(), 'uploads'), // Backend root/uploads (where files are actually saved - HIGHEST PRIORITY)
   path.join(__dirname, '../../uploads'), // Backend root/uploads (if __dirname is in app/)
-  path.join(process.cwd(), 'src/uploads'), // Backend/src/uploads (fallback)
+  path.join(process.cwd(), 'src/uploads'), // Backend/src/uploads (fallback for old files)
   path.join(__dirname, '../../src/uploads'), // Source code location (if __dirname is in app/)
   path.join(__dirname, '../uploads'), // Standard: backend/src/uploads (source) or backend/dist/uploads (compiled)
 ];
@@ -62,7 +62,9 @@ for (const testPath of possibleUploadPaths) {
 }
 
 // Serve static files with proper headers
-app.use('/uploads', express.static(uploadsPath, {
+// Serve from root uploads (primary location where new files are saved)
+const rootUploadsPath = path.join(process.cwd(), 'uploads');
+app.use('/uploads', express.static(rootUploadsPath, {
   setHeaders: (res, filePath) => {
     // Set CORS headers for static files
     res.setHeader('Access-Control-Allow-Origin', '*');

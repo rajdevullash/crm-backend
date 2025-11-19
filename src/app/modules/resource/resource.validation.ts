@@ -8,7 +8,8 @@ const addressSchema = z.object({
 });
 
 const bankDetailsSchema = z.object({
-  name: z.string({ required_error: 'Bank name is required' }),
+  beneficiaryName: z.string({ required_error: 'Beneficiary name is required' }),
+  beneficiaryAccount: z.string({ required_error: 'Beneficiary account is required' }),
   accountNumber: z.string({ required_error: 'Account number is required' }),
   routingNumber: z.string({ required_error: 'Routing number is required' }),
 });

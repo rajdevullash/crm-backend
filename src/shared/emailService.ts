@@ -209,6 +209,84 @@ export const emailTemplates = {
       </html>
     `;
   },
+  todayActivityReminder: (data: {
+    userName: string;
+    activityType: string;
+    activityDate: Date;
+    leadTitle?: string;
+    leadName?: string;
+    activityCount: number;
+    isStandalone?: boolean;
+  }) => {
+    const formattedDate = new Date(data.activityDate).toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; }
+          .activity-details { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .activity-details h3 { margin-top: 0; color: #667eea; }
+          .detail-row { margin: 10px 0; }
+          .detail-label { font-weight: bold; color: #555; }
+          .detail-value { color: #333; }
+          .count-badge { display: inline-block; padding: 8px 16px; background: #667eea; color: white; border-radius: 20px; font-size: 18px; font-weight: bold; }
+          .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }
+          .footer { text-align: center; padding: 20px; color: #777; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📅 Today's Activities Reminder</h1>
+          </div>
+          <div class="content">
+            <p>Hello <strong>${data.userName}</strong>,</p>
+            <p>You have <span class="count-badge">${data.activityCount}</span> ${data.activityCount === 1 ? 'activity' : 'activities'} scheduled for today (${formattedDate}).</p>
+            
+            ${data.leadTitle || data.isStandalone ? `
+            <div class="activity-details">
+              <h3>Activity Details</h3>
+              
+              <div class="detail-row">
+                <span class="detail-label">📋 Activity Type:</span>
+                <span class="detail-value">${data.activityType.charAt(0).toUpperCase() + data.activityType.slice(1)}${data.isStandalone ? ' (Standalone)' : ''}</span>
+              </div>
+              
+              ${data.leadTitle ? `
+              <div class="detail-row">
+                <span class="detail-label">👤 Lead:</span>
+                <span class="detail-value">${data.leadTitle}${data.leadName ? ` (${data.leadName})` : ''}</span>
+              </div>
+              ` : data.isStandalone ? `
+              <div class="detail-row">
+                <span class="detail-label">📌 Type:</span>
+                <span class="detail-value">Standalone Activity</span>
+              </div>
+              ` : ''}
+            </div>
+            ` : ''}
+            
+            <p>Please log in to your dashboard to view all your activities and manage them.</p>
+            
+            <p style="margin-top: 30px;">Best regards,<br><strong>CRM Team</strong></p>
+          </div>
+          <div class="footer">
+            <p>This is an automated notification. Please do not reply to this email.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  },
 };
 
 // Send email function
@@ -283,6 +361,35 @@ export const sendLeadAssignmentEmail = async (data: {
   await sendEmail(
     data.assignedToEmail,
     `New Lead Assigned: ${data.leadTitle}`,
+    html,
+  );
+};
+
+// Helper function to send today's activity reminder email
+export const sendTodayActivityReminderEmail = async (data: {
+  userEmail: string;
+  userName: string;
+  activityType: string;
+  activityDate: Date;
+  leadTitle?: string;
+  leadName?: string;
+  activityCount: number;
+  isStandalone?: boolean;
+}): Promise<void> => {
+  const html = emailTemplates.todayActivityReminder({
+    userName: data.userName,
+    activityType: data.activityType,
+    activityDate: data.activityDate,
+    leadTitle: data.leadTitle,
+    leadName: data.leadName,
+    activityCount: data.activityCount,
+  });
+
+  const subject = `Today's Activities Reminder: ${data.activityCount} ${data.activityCount === 1 ? 'Activity' : 'Activities'}`;
+
+  await sendEmail(
+    data.userEmail,
+    subject,
     html,
   );
 };

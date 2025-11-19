@@ -621,7 +621,8 @@ const updateApplication = catchAsync(async (req: Request, res: Response) => {
           },
           // Provide complete bank details with placeholder values
           bankDetails: {
-            name: 'To be updated',
+            beneficiaryName: 'To be updated',
+            beneficiaryAccount: 'To be updated',
             accountNumber: 'To be updated',
             routingNumber: 'To be updated',
           },

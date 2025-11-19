@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from 'express';
 import catchAsync from '../../../shared/catchAsync';
 import sendResponse from '../../../shared/sendResponse';
@@ -142,6 +143,7 @@ const addAttachment = catchAsync(async (req: Request, res: Response) => {
   const user = (req as any).user;
   
   // multer.single() puts file in req.file, not req.files
+  // eslint-disable-next-line no-undef
   const file = req.file as Express.Multer.File;
   
   if (!file) {
