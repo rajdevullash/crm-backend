@@ -14,6 +14,7 @@ const app: Application = express();
 // Allowed origins list
 const allowedOrigins = [
   "http://localhost:3000",
+  "http://localhost:3001",
   "http://192.168.0.103:8081", // Mobile app (Expo) - old IP
   "exp://192.168.0.103:8081", // Expo Go - old IP
   "http://192.168.0.195:8081", // Mobile app (Expo) - new IP
