@@ -38,12 +38,6 @@ const createResource = async (resourceData: Partial<IResource>, userId?: string,
     throw new ApiError(httpStatus.CONFLICT, 'Email already exists');
   }
 
-  // Check if phone already exists
-  const existingPhone = await Resource.findOne({ phone: resourceData.phone });
-  if (existingPhone) {
-    throw new ApiError(httpStatus.CONFLICT, 'Phone number already exists');
-  }
-
   // Ensure required fields
   if (!resourceData.workMode || !resourceData.jobType || !resourceData.position || !resourceData.department) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Missing required job information fields');

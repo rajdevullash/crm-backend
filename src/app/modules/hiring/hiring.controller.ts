@@ -578,86 +578,169 @@ const updateApplication = catchAsync(async (req: Request, res: Response) => {
   }
 
   // If status changed to 'hired', create a resource
-  if (req.body.status === 'hired' && currentApplication.status !== 'hired') {
+  // Check case-insensitively for 'hired' status
+  const newStatus = req.body.status?.toLowerCase()?.trim();
+  const currentStatus = currentApplication.status?.toLowerCase()?.trim();
+  
+  if (newStatus === 'hired' && currentStatus !== 'hired') {
     try {
       const { ResourceService } = await import('../resource/resource.service');
+      const { Resource } = await import('../resource/resource.model');
       const { Job } = await import('./job.model');
       
-      // Get job details for department
-      const job = await Job.findById(application.jobId);
+      // Check if resource already exists for this application
+      let existingResource = await Resource.findOne({ applicationId: id });
       
-      if (job) {
-        // Create resource from application data
-        // Note: Fields like nid, address, bankDetails, emergencyContact use placeholder values
-        // and should be updated later through the resource edit page
-        const resourceData: any = {
-          name: application.name,
-          email: application.email,
-          phone: application.phone,
-          department: job.department,
-          position: job.title,
-          joiningDate: new Date(),
-          workMode: 'on-site' as const, // Default, can be updated later
-          jobType: job.type === 'Internship' ? 'internship' as const : 'permanent' as const,
-          jobStatus: 'probation' as const, // Default status
-          salary: 0, // Set to 0 initially, will be updated later
-          // employeeId will be generated automatically in the service
-          // nid will use default "To be updated" from model
-          applicationId: application._id?.toString(),
-          // Provide complete address objects with placeholder values
-          presentAddress: {
-            street: application.location || 'To be updated',
-            city: 'To be updated',
-            state: 'To be updated',
-            zipCode: '0000',
-            country: 'Bangladesh',
-          },
-          permanentAddress: {
-            street: application.location || 'To be updated',
-            city: 'To be updated',
-            state: 'To be updated',
-            zipCode: '0000',
-            country: 'Bangladesh',
-          },
-          // Provide complete bank details with placeholder values
-          bankDetails: {
-            beneficiaryName: 'To be updated',
-            beneficiaryAccount: 'To be updated',
-            accountNumber: 'To be updated',
-            routingNumber: 'To be updated',
-          },
-          // Provide complete emergency contact with placeholder values
-          emergencyContact: {
-            name: 'To be updated',
-            phone: 'To be updated',
-            relation: 'To be updated',
-          },
-          // Add resume/CV as attachment from application
-          attachments: application.resumeUrl ? [{
-            name: application.resumeUrl.split('/').pop() || `${application.name}_Resume.pdf`,
-            url: application.resumeUrl,
-            documentType: 'Resume' as const,
-            uploadedAt: application.appliedDate || new Date(),
-            uploadedBy: {
-              id: user.userId || 'system',
-              name: user.name || 'System',
-              role: user.role || 'system',
-            },
-          }] : [],
-        };
+      // If no resource by applicationId, check by phone or email (to handle duplicates)
+      if (!existingResource) {
+        existingResource = await Resource.findOne({
 
-        await ResourceService.createResource(
-          resourceData,
-          user.userId,
-          user.name,
-          user.role
-        );
 
-        console.log(`✅ Resource created for hired application: ${application.name}`);
+            email: application.email 
+
+        });
       }
-    } catch (error) {
-      console.error('Error creating resource for hired application:', error);
+      
+      if (existingResource) {
+        // Resource already exists - update it to link applicationId and add resume if needed
+        const needsApplicationIdUpdate = !existingResource.applicationId;
+        const applicationId = application._id?.toString();
+        
+        // Check if resume attachment already exists
+        let needsResumeUpdate = false;
+        let newAttachment = null;
+        
+        if (application.resumeUrl) {
+          const resumeExists = existingResource.attachments?.some(
+            (att: any) => att.url === application.resumeUrl || att.documentType === 'Resume'
+          );
+          
+          if (!resumeExists) {
+            needsResumeUpdate = true;
+            newAttachment = {
+              name: application.resumeUrl.split('/').pop() || `${application.name}_Resume.pdf`,
+              url: application.resumeUrl,
+              documentType: 'Resume' as const,
+              uploadedAt: application.appliedDate || new Date(),
+              uploadedBy: {
+                id: user.userId || 'system',
+                name: user.name || 'System',
+                role: user.role || 'system',
+              },
+            };
+          }
+        }
+        
+        // Build update query
+        const updateQuery: any = {};
+        if (needsApplicationIdUpdate && needsResumeUpdate) {
+          // Update both applicationId and add resume
+          updateQuery.$set = { applicationId };
+          updateQuery.$push = { attachments: newAttachment };
+        } else if (needsApplicationIdUpdate) {
+          // Only update applicationId
+          updateQuery.$set = { applicationId };
+        } else if (needsResumeUpdate) {
+          // Only add resume
+          updateQuery.$push = { attachments: newAttachment };
+        }
+        
+        if (Object.keys(updateQuery).length > 0) {
+          await Resource.findByIdAndUpdate(existingResource._id, updateQuery, { new: true });
+          console.log(`✅ Updated existing resource for hired application: ${application.name} (Resource ID: ${existingResource._id})`);
+        } else {
+          console.log(`⚠️ Resource already exists for application ${id}, no updates needed`);
+        }
+      } else {
+        // Get job details for department
+        const job = await Job.findById(application.jobId);
+        
+        if (!job) {
+          console.error(`❌ Job not found for application ${id}, jobId: ${application.jobId}`);
+        } else {
+          // Create resource from application data
+          // Note: Fields like nid, address, bankDetails, emergencyContact use placeholder values
+          // and should be updated later through the resource edit page
+          const resourceData: any = {
+            name: application.name,
+            email: application.email,
+            phone: application.phone,
+            department: job.department,
+            position: job.title,
+            joiningDate: new Date(),
+            workMode: 'on-site' as const, // Default, can be updated later
+            jobType: job.type === 'Internship' ? 'internship' as const : 'permanent' as const,
+            jobStatus: 'probation' as const, // Default status
+            salary: 0, // Set to 0 initially, will be updated later
+            // employeeId will be generated automatically in the service
+            // nid will use default "To be updated" from model
+            applicationId: application._id?.toString(),
+            // Provide complete address objects with placeholder values
+            presentAddress: {
+              street: application.location || 'To be updated',
+              city: 'To be updated',
+              state: 'To be updated',
+              zipCode: '0000',
+              country: 'Bangladesh',
+            },
+            permanentAddress: {
+              street: application.location || 'To be updated',
+              city: 'To be updated',
+              state: 'To be updated',
+              zipCode: '0000',
+              country: 'Bangladesh',
+            },
+            // Provide complete bank details with placeholder values
+            bankDetails: {
+              beneficiaryName: 'To be updated',
+              beneficiaryAccount: 'To be updated',
+              accountNumber: 'To be updated',
+              routingNumber: 'To be updated',
+            },
+            // Provide complete emergency contact with placeholder values
+            emergencyContact: {
+              name: 'To be updated',
+              phone: 'To be updated',
+              relation: 'To be updated',
+            },
+            // Add resume/CV as attachment from application
+            attachments: application.resumeUrl ? [{
+              name: application.resumeUrl.split('/').pop() || `${application.name}_Resume.pdf`,
+              url: application.resumeUrl,
+              documentType: 'Resume' as const,
+              uploadedAt: application.appliedDate || new Date(),
+              uploadedBy: {
+                id: user.userId || 'system',
+                name: user.name || 'System',
+                role: user.role || 'system',
+              },
+            }] : [],
+          };
+
+          await ResourceService.createResource(
+            resourceData,
+            user.userId,
+            user.name,
+            user.role
+          );
+
+          console.log(`✅ Resource created for hired application: ${application.name} (ID: ${application._id})`);
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Error creating resource for hired application:', error);
+      console.error('Error details:', {
+        applicationId: id,
+        applicationName: application.name,
+        errorMessage: error?.message,
+        errorStack: error?.stack,
+      });
       // Don't fail the application update if resource creation fails
+    }
+  } else {
+    // Debug logging for status changes
+    if (req.body.status) {
+      console.log(`📝 Status update - Current: "${currentApplication.status}", New: "${req.body.status}", Will create resource: ${newStatus === 'hired' && currentStatus !== 'hired'}`);
     }
   }
 
