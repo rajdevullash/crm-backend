@@ -212,6 +212,17 @@ const updateResource = async (
     throw new ApiError(httpStatus.NOT_FOUND, 'Resource not found');
   }
 
+  // Check if employee ID is being updated and if it already exists (excluding current resource)
+  if (updateData.employeeId && updateData.employeeId !== resource.employeeId) {
+    const existingEmployeeId = await Resource.findOne({ 
+      employeeId: updateData.employeeId,
+      _id: { $ne: id } // Exclude current resource
+    });
+    if (existingEmployeeId) {
+      throw new ApiError(httpStatus.CONFLICT, 'Employee ID already exists');
+    }
+  }
+
   // Track changes for history - only track actual changes, not initial setup
   const changes: {
     workMode?: boolean;
