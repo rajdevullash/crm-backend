@@ -632,6 +632,18 @@ const updateApplication = catchAsync(async (req: Request, res: Response) => {
             phone: 'To be updated',
             relation: 'To be updated',
           },
+          // Add resume/CV as attachment from application
+          attachments: application.resumeUrl ? [{
+            name: application.resumeUrl.split('/').pop() || `${application.name}_Resume.pdf`,
+            url: application.resumeUrl,
+            documentType: 'Resume' as const,
+            uploadedAt: application.appliedDate || new Date(),
+            uploadedBy: {
+              id: user.userId || 'system',
+              name: user.name || 'System',
+              role: user.role || 'system',
+            },
+          }] : [],
         };
 
         await ResourceService.createResource(
