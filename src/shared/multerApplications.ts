@@ -4,8 +4,8 @@ import fs from 'fs';
 import { Request, Express } from 'express';
 
 // Ensure the upload folders exist
-const resumeFolder = path.join(__dirname, '../../uploads/resumes');
-const coverLetterFolder = path.join(__dirname, '../../uploads/coverLetters');
+const resumeFolder = path.join(process.cwd(), 'uploads', 'resumes');
+const coverLetterFolder = path.join(process.cwd(), 'uploads', 'coverLetters');
 
 if (!fs.existsSync(resumeFolder)) {
   fs.mkdirSync(resumeFolder, { recursive: true });
