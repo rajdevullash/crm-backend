@@ -64,6 +64,16 @@ for (const testPath of possibleUploadPaths) {
 
 // Serve static files with proper headers
 // Serve from root uploads (primary location where new files are saved)
+// const rootUploadsPath = path.join(process.cwd(), 'uploads');
+// app.use('/uploads', express.static(rootUploadsPath, {
+//   setHeaders: (res, filePath) => {
+//     // Set CORS headers for static files
+//     res.setHeader('Access-Control-Allow-Origin', '*');
+//     res.setHeader('Access-Control-Allow-Methods', 'GET');
+//     res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+//   }
+// }));
+
 const rootUploadsPath = path.join(process.cwd(), 'uploads');
 app.use('/uploads', express.static(rootUploadsPath, {
   setHeaders: (res, filePath) => {
@@ -73,6 +83,19 @@ app.use('/uploads', express.static(rootUploadsPath, {
     res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
   }
 }));
+
+// Also serve old files from src/uploads as fallback
+const srcUploadsPath = path.join(process.cwd(), 'src', 'uploads');
+if (fs.existsSync(srcUploadsPath)) {
+  app.use('/uploads', express.static(srcUploadsPath, {
+    setHeaders: (res, filePath) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET');
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+    }
+  }));
+  console.log('✅ Also serving old files from:', srcUploadsPath);
+}
 console.log('✅ Static files served from:', uploadsPath);
 console.log('📁 Available upload paths checked:', possibleUploadPaths);
 
