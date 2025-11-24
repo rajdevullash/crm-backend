@@ -14,32 +14,24 @@ import fs from 'fs';
 // Multer configuration for dynamic file fields
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Save to backend/uploads/resumes (not backend/src/uploads/resumes)
-    // This matches where static files are served from
-    // Use process.cwd() to get backend root, or resolve from __dirname
-    let uploadFolder: string;
-    if (__dirname.includes('dist')) {
-      // In compiled code, __dirname is backend/dist/app/modules/hiring
-      // Go up 3 levels to backend root
-      uploadFolder = path.join(__dirname, '../../../uploads/resumes');
-    } else {
-      // In source code, __dirname is backend/src/app/modules/hiring
-      // Go up 3 levels to backend root
-      uploadFolder = path.join(__dirname, '../../../uploads/resumes');
-    }
-    // Fallback to process.cwd() if path resolution fails
-    if (!fs.existsSync(path.dirname(uploadFolder))) {
-      uploadFolder = path.join(process.cwd(), 'uploads/resumes');
-    }
+    // Always save to backend/uploads/resumes (root uploads directory)
+    // This matches where static files are served from (process.cwd()/uploads)
+    const uploadFolder = path.join(process.cwd(), 'uploads', 'resumes');
+    
+    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadFolder)) {
       fs.mkdirSync(uploadFolder, { recursive: true });
     }
+    
+    console.log(`📁 Saving resume to: ${uploadFolder}`);
     cb(null, uploadFolder);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
-    cb(null, `file-${uniqueSuffix}${ext}`);
+    const filename = `file-${uniqueSuffix}${ext}`;
+    console.log(`📄 Resume filename: ${filename}`);
+    cb(null, filename);
   },
 });
 
@@ -137,9 +129,14 @@ export const submitApplicationResponses = (req: Request, res: Response) => {
           const fileUrl = `/uploads/resumes/${file.filename}`;
           fileMap[fieldName] = fileUrl;
           
+          console.log(`📁 Uploaded file: ${file.filename}`);
+          console.log(`📁 File saved to: ${file.path}`);
+          console.log(`📁 File URL: ${fileUrl}`);
+          
           // If it's a resume field, use it as resumeUrl
           if (fieldName.includes('resume') || fieldName.startsWith('file_')) {
             resumeUrl = fileUrl;
+            console.log(`✅ Resume URL set to: ${resumeUrl}`);
           }
         });
       }
