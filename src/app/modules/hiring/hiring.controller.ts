@@ -594,10 +594,7 @@ const updateApplication = catchAsync(async (req: Request, res: Response) => {
       // If no resource by applicationId, check by phone or email (to handle duplicates)
       if (!existingResource) {
         existingResource = await Resource.findOne({
-
-
             email: application.email 
-
         });
       }
       
