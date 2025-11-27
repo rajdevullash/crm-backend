@@ -34,12 +34,14 @@ const createStandaloneActivity = catchAsync(async (req: Request, res: Response) 
 
 const getAllStandaloneActivities = catchAsync(async (req: Request, res: Response) => {
   const userId = req.user?.userId || req.user?.id;
+  const userRole = req.user?.role;
   const filters: IStandaloneActivityFilters = {
     addedBy: req.query.addedBy as string,
     type: req.query.type as 'call' | 'meeting' | 'email' | 'custom',
     completed: req.query.completed === 'true' ? true : req.query.completed === 'false' ? false : undefined,
     startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
     endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+    userRole: userRole, // Pass user role for role-based filtering
   };
 
   const activities = await standaloneActivityService.getAllStandaloneActivities(filters, userId);
