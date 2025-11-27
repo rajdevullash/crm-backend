@@ -56,6 +56,14 @@ router.post(
   ResourceController.createResource
 );
 
+
+router.get(
+  '/departments',
+  auth(ENUM_USER_ROLE.HR, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.SUPER_ADMIN),
+  checkPermission(ENUM_PERMISSION.HR_RESOURCE_VIEW),
+  ResourceController.getAllDepartments
+);
+
 router.get(
   '/',
   auth(ENUM_USER_ROLE.HR, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.SUPER_ADMIN),
