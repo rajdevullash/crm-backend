@@ -247,6 +247,17 @@ const removeAttachment = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getAllDepartments = catchAsync(async (req: Request, res: Response) => {
+  const result = await ResourceService.getAllDepartments();
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Departments retrieved successfully',
+    data: result,
+  });
+});
+
 export const ResourceController = {
   createResource,
   getAllResources,
@@ -256,5 +267,6 @@ export const ResourceController = {
   addAttachment,
   updateAttachment,
   removeAttachment,
+  getAllDepartments,
 };
 

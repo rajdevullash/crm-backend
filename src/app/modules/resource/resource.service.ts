@@ -462,6 +462,36 @@ const removeAttachment = async (id: string, attachmentIndex: number): Promise<IR
   return resource;
 };
 
+
+const getAllDepartments = async (): Promise<{ department: string; count: number }[]> => {
+  // Use aggregation to get departments with their counts
+  const departmentCounts = await Resource.aggregate([
+    {
+      $group: {
+        _id: '$department',
+        count: { $sum: 1 }
+      }
+    },
+    {
+      $match: {
+        _id: { $ne: null } // Filter out null departments
+      }
+    },
+    {
+      $sort: { _id: 1 } // Sort alphabetically
+    },
+    {
+      $project: {
+        _id: 0,
+        department: '$_id',
+        count: 1
+      }
+    }
+  ]);
+  
+  return departmentCounts;
+};
+
 export const ResourceService = {
   createResource,
   getAllResources,
@@ -472,5 +502,7 @@ export const ResourceService = {
   addAttachment,
   updateAttachment,
   removeAttachment,
+  getAllDepartments,
 };
+
 
