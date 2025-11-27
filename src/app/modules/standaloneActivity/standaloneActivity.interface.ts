@@ -6,6 +6,7 @@ export type IStandaloneActivityFilters = {
   completed?: boolean;
   startDate?: Date;
   endDate?: Date;
+  userRole?: string; // User role for role-based filtering
 };
 
 export type ICreateStandaloneActivity = Omit<IStandaloneActivity, '_id' | 'createdAt' | 'updatedAt'>;

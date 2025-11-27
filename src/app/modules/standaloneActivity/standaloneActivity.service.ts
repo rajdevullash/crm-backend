@@ -15,10 +15,18 @@ const getAllStandaloneActivities = async (
   const query: Record<string, unknown> = {};
 
   if (filters.addedBy) {
+    // If explicit addedBy filter is provided, use it
     query.addedBy = filters.addedBy;
   } else if (userId) {
-    // If no addedBy filter, show activities for current user
-    query.addedBy = userId;
+    // Check user role to determine filtering behavior
+    const userRole = filters.userRole?.toLowerCase();
+    const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+    
+    // If user is not an admin, filter by their userId (representatives only see their own)
+    // Admins see all activities (no addedBy filter)
+    if (!isAdmin) {
+      query.addedBy = userId;
+    }
   }
 
   if (filters.type) {
