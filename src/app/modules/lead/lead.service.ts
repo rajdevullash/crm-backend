@@ -127,10 +127,22 @@ const getAllLeads = async (
   
   // Filters needs $and to fulfill all the conditions
   if (Object.keys(filtersData).length) {
+    // Handle assignedTo filter specially to also include createdBy
+    const filterConditions = Object.entries(filtersData).map(([field, value]) => {
+      if (field === 'assignedTo' && value) {
+        // When filtering by assignedTo, also include leads created by this user
+        return {
+          $or: [
+            { assignedTo: value },
+            { createdBy: value }
+          ]
+        };
+      }
+      return { [field]: value };
+    });
+    
     andConditions.push({
-      $and: Object.entries(filtersData).map(([field, value]) => ({
-        [field]: value,
-      })),
+      $and: filterConditions,
     });
   }
 
