@@ -5,7 +5,13 @@ import { ICreateStandaloneActivity, IStandaloneActivityFilters, IUpdateStandalon
 
 const createStandaloneActivity = async (payload: ICreateStandaloneActivity): Promise<IStandaloneActivity> => {
   const activity = await StandaloneActivity.create(payload);
-  return activity;
+  
+  // Populate addedBy to return user details in response
+  const populatedActivity = await StandaloneActivity.findById(activity._id)
+    .populate('addedBy', 'name email')
+    .lean();
+  
+  return populatedActivity as IStandaloneActivity;
 };
 
 const getAllStandaloneActivities = async (

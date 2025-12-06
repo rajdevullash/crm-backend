@@ -5,6 +5,7 @@ import http from 'http';
 import { initializeSocket } from './app/modules/socket/socketService';
 import { initializeActivityReminderCron } from './app/modules/notification/activityReminderService';
 import { initializeOverdueActivityChecker } from './app/modules/notification/overdueActivityService';
+import { initializeOverdueActivityEmailCron } from './app/modules/notification/overdueActivityEmailService';
 import { initializeActivityBadgeCron } from './app/modules/activityBadge/activityBadge.service';
 
 
@@ -19,6 +20,7 @@ async function main() {
   // Initialize cron jobs
   initializeActivityReminderCron(); // Activity reminders (1 day before)
   initializeOverdueActivityChecker(); // Overdue activity notifications (daily check)
+  initializeOverdueActivityEmailCron(); // Overdue activity email notifications (daily at 9:00 AM)
   initializeActivityBadgeCron(); // Activity badge reset (daily at 00:01 AM)
   
   server.listen(config.port, () => {
