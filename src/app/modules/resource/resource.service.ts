@@ -184,8 +184,32 @@ const getAllResources = async (filters: IResourceFilters, paginationOptions: IPa
   };
 };
 
-const getSingleResource = async (id: string): Promise<IResource | null> => {
+const getSingleResource = async (id: string): Promise<any> => {
   const resource = await Resource.findById(id);
+  if (!resource) {
+    return null;
+  }
+  
+  // If resource has userId, fetch user data including profileImage
+  if (resource.userId) {
+    try {
+      const user = await User.findById(resource.userId).select('profileImage name email');
+      if (user) {
+        return {
+          ...resource.toObject(),
+          user: {
+            profileImage: user.profileImage,
+            name: user.name,
+            email: user.email,
+          },
+        };
+      }
+    } catch (error) {
+      // If user fetch fails (e.g., invalid userId), just return resource without user data
+      console.error('Error fetching user data for resource:', error);
+    }
+  }
+  
   return resource;
 };
 

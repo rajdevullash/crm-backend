@@ -18,7 +18,8 @@ const sendResponse = <T>(res: Response, data: IApiResponse<T>): void => {
     success: data.success,
     message: data.message || null,
     meta: data.meta || null || undefined,
-    data: data.data || null || undefined,
+    // Always include data field, even if null
+    data: data.data !== undefined ? data.data : null,
   };
 
   res.status(data.statusCode).json(responseData);

@@ -24,7 +24,7 @@ router.get(
 
 router.get(
   '/single-user/:id',
-  auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.REPRESENTATIVE),
+  auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.REPRESENTATIVE, ENUM_USER_ROLE.HR),
   AuthController.getSingleUser
 );
 
@@ -111,7 +111,7 @@ router.get(
 router.patch(
   '/hr/:id',
   uploadProfileImage,
-  auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN),
+  auth(ENUM_USER_ROLE.SUPER_ADMIN, ENUM_USER_ROLE.ADMIN, ENUM_USER_ROLE.HR),
   AuthController.updateHR
 );
 

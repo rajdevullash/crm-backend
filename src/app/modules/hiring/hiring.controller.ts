@@ -14,7 +14,25 @@ import { paginationFields } from '../../../constants/pagination';
 const createJob = catchAsync(async (req: Request, res: Response) => {
   const user = (req as any).user;
   
+  // For non-draft jobs, validate required fields
+  if (req.body.status && req.body.status !== 'draft') {
+    if (!req.body.title || !req.body.department || !req.body.location) {
+      return sendResponse(res, {
+        statusCode: 400,
+        success: false,
+        message: 'Title, department, and location are required for non-draft jobs',
+        data: null,
+      });
+    }
+  }
+  
+  // Provide defaults for draft jobs
   const jobData = {
+    title: req.body.title || 'Untitled Job',
+    department: req.body.department || 'General',
+    location: req.body.location || 'Remote',
+    type: req.body.type || 'Full-time',
+    salary: req.body.salary || 'Competitive',
     ...req.body,
     postedBy: {
       id: user.userId,
@@ -451,6 +469,55 @@ const application = await Application.create(applicationData);
 await Job.findByIdAndUpdate(req.body.jobId, {
   $inc: { applicantCount: 1 },
 });
+
+// Send auto-reply email if enabled
+if (job.autoReplyEmail && job.autoReplyText && req.body.email) {
+  try {
+    const { sendEmail } = await import('../../../shared/emailService');
+    
+    // Replace placeholders in auto-reply text
+    const emailText = job.autoReplyText
+      .replace(/{name}/g, req.body.name || 'Applicant')
+      .replace(/{job_title}/g, job.title)
+      .replace(/{jobTitle}/g, job.title);
+    
+    // Convert plain text to HTML
+    const htmlEmail = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .content { background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-radius: 8px; }
+          .footer { text-align: center; padding: 20px; color: #777; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="content">
+            ${emailText.replace(/\n/g, '<br>')}
+          </div>
+          <div class="footer">
+            <p>This is an automated response. Please do not reply to this email.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    
+    await sendEmail(
+      req.body.email,
+      `Application Received: ${job.title}`,
+      htmlEmail
+    );
+    
+    console.log(`✅ Auto-reply email sent to ${req.body.email}`);
+  } catch (error) {
+    console.error('❌ Error sending auto-reply email:', error);
+    // Don't fail the application creation if email fails
+  }
+}
 
 sendResponse(res, {
   statusCode: 201,
