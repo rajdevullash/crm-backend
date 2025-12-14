@@ -5,27 +5,41 @@ const jobSchema = new Schema<IJob>(
   {
     title: {
       type: String,
-      required: true,
       trim: true,
+      default: 'Untitled Job',
     },
     department: {
       type: String,
-      required: true,
       trim: true,
+      default: 'General',
     },
     location: {
       type: String,
-      required: true,
       trim: true,
+      default: 'Remote',
     },
     type: {
       type: String,
       enum: ['Full-time', 'Part-time', 'Contract', 'Internship'],
-      required: true,
+      default: 'Full-time',
     },
     salary: {
       type: String,
-      required: true,
+      default: 'Competitive',
+    },
+    salaryMin: {
+      type: String,
+    },
+    salaryMax: {
+      type: String,
+    },
+    salaryCurrency: {
+      type: String,
+      default: 'USD',
+    },
+    salaryPeriod: {
+      type: String,
+      default: '/ year',
     },
     vacancy: {
       type: Number,
@@ -66,9 +80,20 @@ const jobSchema = new Schema<IJob>(
     closedDate: {
       type: Date,
     },
+    applicationDeadline: {
+      type: Date,
+    },
     applicantCount: {
       type: Number,
       default: 0,
+    },
+    autoReplyEmail: {
+      type: Boolean,
+      default: false,
+    },
+    autoReplyText: {
+      type: String,
+      default: '',
     },
   },
   {

@@ -1,10 +1,14 @@
-export interface IJob {
+export type IJob = {
   _id?: string;
   title: string;
   department: string;
   location: string;
   type: 'Full-time' | 'Part-time' | 'Contract' | 'Internship';
   salary: string;
+  salaryMin?: string;
+  salaryMax?: string;
+  salaryCurrency?: string;
+  salaryPeriod?: string;
   vacancy: number;
   description?: string;
   extractedKeywords?: string[]; // Keywords extracted from job description
@@ -16,12 +20,15 @@ export interface IJob {
   };
   postedDate: Date;
   closedDate?: Date;
+  applicationDeadline?: Date;
   applicantCount?: number;
+  autoReplyEmail?: boolean;
+  autoReplyText?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-export interface IApplication {
+export type IApplication = {
   _id?: string;
   jobId: string;
   name: string;
@@ -54,14 +61,14 @@ export interface IApplication {
   updatedAt?: Date;
 }
 
-export interface IJobFilters {
+export type IJobFilters = {
   searchTerm?: string;
   status?: string;
   department?: string;
   type?: string;
 }
 
-export interface IApplicationFilters {
+export type IApplicationFilters = {
   searchTerm?: string;
   jobId?: string;
   status?: string;
