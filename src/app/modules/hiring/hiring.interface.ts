@@ -18,6 +18,11 @@ export type IJob = {
     name: string;
     role: string;
   };
+  hiringManagers?: {
+    id: string;
+    name: string;
+    role: string;
+  }[];
   postedDate: Date;
   closedDate?: Date;
   applicationDeadline?: Date;

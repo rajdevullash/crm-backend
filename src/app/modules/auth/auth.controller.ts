@@ -219,7 +219,9 @@ const getAllHR = catchAsync(async (req: Request, res: Response) => {
   const filters = { ...pick(req.query, authFilterableFields), role: ENUM_USER_ROLE.HR };
   const paginationOptions = pick(req.query, paginationFields);
 
-  const result = await AuthService.getAllUsers(filters, paginationOptions);
+  const result = await AuthService.getAllHR(filters, paginationOptions);
+
+  console.log('result for hr', result)
 
   sendResponse(res, {
     statusCode: httpStatus.OK,

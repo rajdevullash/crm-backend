@@ -605,6 +605,66 @@ const getProfile = async (id: string): Promise<IUser | null> => {
   return user as IUser;
 };
 
+// Get all HR users
+const getAllHR = async (
+  filters: IAuthFilters,
+  paginationOptions: IPaginationOptions,
+): Promise<IGetAllUsersResponse> => {
+  const { searchTerm, ...filtersData } = filters;
+  const { page, limit, skip, sortBy, sortOrder } =
+    paginationHelpers.calculatePagination(paginationOptions);
+
+  const andConditions = [];
+
+  // Force role to be HR
+  andConditions.push({
+    role: ENUM_USER_ROLE.HR,
+  });
+
+  if (searchTerm) {
+    andConditions.push({
+      $or: authSearchableFields.map((field) => ({
+        [field]: {
+          $regex: searchTerm,
+          $options: 'i',
+        },
+      })),
+    });
+  }
+
+  if (Object.keys(filtersData).length) {
+    andConditions.push({
+      $and: Object.entries(filtersData).map(([field, value]) => ({
+        [field]: value,
+      })),
+    });
+  }
+
+  const sortConditions: { [key: string]: 1 | -1 } = {};
+  if (sortBy && sortOrder) {
+    sortConditions[sortBy] = sortOrder === 'asc' ? 1 : -1;
+  }
+
+  const whereConditions =
+    andConditions.length > 0 ? { $and: andConditions } : {};
+
+  const result = await User.find(whereConditions)
+    .sort(sortConditions)
+    .skip(skip)
+    .limit(limit);
+
+  const total = await User.countDocuments(whereConditions);
+
+  return {
+    meta: {
+      page,
+      limit,
+      total,
+    },
+    data: result,
+  };
+};
+
 export const AuthService = {
   createUser,
   loginUser,
@@ -613,6 +673,7 @@ export const AuthService = {
   getSingleUser,
   getAllUsers,
   getAllUsersForAdmin,
+  getAllHR,
   logoutUser,
   updateUser,
   deleteUser,
