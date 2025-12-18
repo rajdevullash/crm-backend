@@ -16,6 +16,8 @@ import { DepartmentRoutes } from '../modules/department/department.route';
 import { ApplicationStatusRoutes } from '../modules/hiring/applicationStatus.route';
 import { PayslipRoutes } from '../modules/payslip/payslip.route';
 import standaloneActivityRoutes from '../modules/standaloneActivity/standaloneActivity.route';
+import { AttendanceRoutes } from '../modules/attendance/attendance.route';
+import { ShiftRoutes } from '../modules/shift/shift.route';
 
 const router = express.Router();
 
@@ -87,7 +89,15 @@ const moduleRoutes = [
   {
     path: '/standalone-activities',
     route: standaloneActivityRoutes,
-  }
+  },
+  {
+    path: '/attendance',
+    route: AttendanceRoutes,
+  },
+  {
+    path: '/shifts',
+    route: ShiftRoutes,
+  },
 ];
 
 moduleRoutes.forEach(route => router.use(route.path, route.route));
