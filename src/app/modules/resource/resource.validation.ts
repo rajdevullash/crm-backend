@@ -1,23 +1,23 @@
 import { z } from 'zod';
 
 const addressSchema = z.object({
-  street: z.string({ required_error: 'Street is required' }),
-  city: z.string({ required_error: 'City is required' }),
-  zipCode: z.string({ required_error: 'Zip code is required' }),
-  country: z.string().default('Bangladesh'),
+  street: z.string().optional(),
+  city: z.string().optional(),
+  zipCode: z.string().optional(),
+  country: z.string().optional(),
 });
 
 const bankDetailsSchema = z.object({
-  beneficiaryName: z.string({ required_error: 'Beneficiary name is required' }),
-  beneficiaryAccount: z.string({ required_error: 'Beneficiary account is required' }),
-  accountNumber: z.string({ required_error: 'Account number is required' }),
-  routingNumber: z.string({ required_error: 'Routing number is required' }),
+  beneficiaryName: z.string().optional(),
+  beneficiaryAccount: z.string().optional(),
+  accountNumber: z.string().optional(),
+  routingNumber: z.string().optional(),
 });
 
 const emergencyContactSchema = z.object({
-  name: z.string({ required_error: 'Emergency contact name is required' }),
-  phone: z.string({ required_error: 'Emergency contact phone is required' }),
-  relation: z.string({ required_error: 'Relation is required' }),
+  name: z.string().optional(),
+  phone: z.string().optional(),
+  relation: z.string().optional(),
 });
 
 const createResourceZodSchema = z.object({

@@ -737,35 +737,35 @@ const updateApplication = catchAsync(async (req: Request, res: Response) => {
             jobStatus: 'probation' as const, // Default status
             salary: 0, // Set to 0 initially, will be updated later
             // employeeId will be generated automatically in the service
-            // nid will use default "To be updated" from model
+            // nid will use default empty string from model
             applicationId: application._id?.toString(),
             // Provide complete address objects with placeholder values
             presentAddress: {
-              street: application.location || 'To be updated',
-              city: 'To be updated',
-              state: 'To be updated',
+              street: application.location || '',
+              city: '',
+              state: '',
               zipCode: '0000',
               country: 'Bangladesh',
             },
             permanentAddress: {
-              street: application.location || 'To be updated',
-              city: 'To be updated',
-              state: 'To be updated',
+              street: application.location || '',
+              city: '',
+              state: '',
               zipCode: '0000',
               country: 'Bangladesh',
             },
             // Provide complete bank details with placeholder values
             bankDetails: {
-              beneficiaryName: 'To be updated',
-              beneficiaryAccount: 'To be updated',
-              accountNumber: 'To be updated',
-              routingNumber: 'To be updated',
+              beneficiaryName: '',
+              beneficiaryAccount: '',
+              accountNumber: '',
+              routingNumber: '',
             },
             // Provide complete emergency contact with placeholder values
             emergencyContact: {
-              name: 'To be updated',
-              phone: 'To be updated',
-              relation: 'To be updated',
+              name: '',
+              phone: '',
+              relation: '',
             },
             // Add resume/CV as attachment from application
             attachments: application.resumeUrl ? [{

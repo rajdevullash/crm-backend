@@ -3,29 +3,29 @@ import { IResource, WorkMode, JobType, JobStatus } from './resource.interface';
 
 const addressSchema = new Schema(
   {
-    street: { type: String, required: true, trim: true, default: 'To be updated' },
-    city: { type: String, required: true, trim: true, default: 'To be updated' },
-    zipCode: { type: String, required: true, trim: true, default: '0000' },
-    country: { type: String, required: true, trim: true, default: 'Bangladesh' },
+    street: { type: String, required: false, trim: true, default: '' },
+    city: { type: String, required: false, trim: true, default: '' },
+    zipCode: { type: String, required: false, trim: true, default: '' },
+    country: { type: String, required: false, trim: true, default: '' },
   },
   { _id: false }
 );
 
 const bankDetailsSchema = new Schema(
   {
-    beneficiaryName: { type: String, required: true, trim: true, default: 'To be updated' },
-    beneficiaryAccount: { type: String, required: true, trim: true, default: 'To be updated' },
-    accountNumber: { type: String, required: true, trim: true, default: 'To be updated' },
-    routingNumber: { type: String, required: true, trim: true, default: 'To be updated' },
+    beneficiaryName: { type: String, required: false, trim: true, default: '' },
+    beneficiaryAccount: { type: String, required: false, trim: true, default: '' },
+    accountNumber: { type: String, required: false, trim: true, default: '' },
+    routingNumber: { type: String, required: false, trim: true, default: '' },
   },
   { _id: false }
 );
 
 const emergencyContactSchema = new Schema(
   {
-    name: { type: String, required: true, trim: true, default: 'To be updated' },
-    phone: { type: String, required: true, trim: true, default: 'To be updated' },
-    relation: { type: String, required: true, trim: true, default: 'To be updated' },
+    name: { type: String, required: false, trim: true, default: '' },
+    phone: { type: String, required: false, trim: true, default: '' },
+    relation: { type: String, required: false, trim: true, default: '' },
   },
   { _id: false }
 );
@@ -104,7 +104,7 @@ const resourceSchema = new Schema<IResource>(
     // Personal Information
     name: { type: String, required: true, trim: true },
     employeeId: { type: String, required: true, unique: true, trim: true },
-    nid: { type: String, required: true, trim: true, default: 'To be updated' },
+    nid: { type: String, required: false, trim: true, default: '' },
     phone: { type: String, required: true, trim: true },
     secondaryPhone: { type: String, trim: true },
     email: { type: String, required: true, trim: true, lowercase: true },
