@@ -145,6 +145,7 @@ const getAllJobs = catchAsync(async (req: Request, res: Response) => {
         title: 1,
         department: 1,
         location: 1,
+        workMode: 1,
         type: 1,
         salary: 1,
         vacancy: 1,
