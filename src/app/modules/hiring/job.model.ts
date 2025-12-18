@@ -18,6 +18,11 @@ const jobSchema = new Schema<IJob>(
       trim: true,
       default: 'Remote',
     },
+    workMode: {
+      type: String,
+      enum: ['Remote', 'On-Site', 'Hybrid'],
+      default: 'Remote',
+    },
     type: {
       type: String,
       enum: ['Full-time', 'Part-time', 'Contract', 'Internship'],

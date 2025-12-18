@@ -3,6 +3,7 @@ export type IJob = {
   title: string;
   department: string;
   location: string;
+  workMode: 'Remote' | 'On-Site' | 'Hybrid';
   type: 'Full-time' | 'Part-time' | 'Contract' | 'Internship';
   salary: string;
   salaryMin?: string;
