@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Your controller code here
@@ -435,9 +436,9 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
 
   // Update existing activity
   if (req.body.updateActivity) {
-    console.log('Updating activity with data:', req.body.updateActivity);
     try {
       const updatedActivity = JSON.parse(req.body.updateActivity);
+      
       const activityIndex = formattedActivities.findIndex(activity => {
         let activityId;
         
@@ -472,18 +473,41 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
           activityDate = new Date(updatedActivity.meetingDate);
           // Also ensure meetingDate is a Date object
           activityUpdateData.meetingDate = new Date(updatedActivity.meetingDate);
-        } else {
+        } else if (updatedActivity.date) {
           activityDate = new Date(updatedActivity.date);
+        } else {
+          activityDate = new Date();
         }
         
-        // Update the activity with new data
+        // Ensure the date field is always a Date object, not a string
+        activityUpdateData.date = activityDate;
+        
+        // Completely replace the activity with new data (keeping only _id and addedBy from existing)
+        // This ensures all fields are updated, not merged
         formattedActivities[activityIndex] = {
-          ...activityUpdateData,
           _id: existingId,
           addedBy: existingAddedBy,
-          date: activityDate,
+          type: activityUpdateData.type,
+          date: activityUpdateData.date,
+          completed: activityUpdateData.completed || false,
+          completedAt: activityUpdateData.completedAt || null,
+          completedBy: activityUpdateData.completedBy || null,
+          feedback: activityUpdateData.feedback || '',
+          // Call fields
+          callNote: activityUpdateData.callNote || '',
+          // Meeting fields
+          meetingType: activityUpdateData.meetingType || 'online',
+          meetingLink: activityUpdateData.meetingLink || '',
+          meetingLocation: activityUpdateData.meetingLocation || '',
+          meetingDate: activityUpdateData.meetingDate || null,
+          meetingOutcome: activityUpdateData.meetingOutcome || '',
+          meetingAttendees: activityUpdateData.meetingAttendees || '',
+          // Email fields
+          emailNote: activityUpdateData.emailNote || '',
+          // Custom fields
+          customNote: activityUpdateData.customNote || '',
+          customAttachment: activityUpdateData.customAttachment || null,
         };
-        console.log('Updated activity:', formattedActivities[activityIndex]);
       } else {
         console.log('Activity not found with ID:', updatedActivity.id);
       }
@@ -514,8 +538,6 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
     console.log('Activities after deletion:', formattedActivities.length);
   }
 
-  console.log('Final activities to be saved:', formattedActivities);
-
   const data = {
     ...req.body,
     notes: formattedNotes,
@@ -524,6 +546,7 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
   };
 
   const result = await LeadService.updateLead(id, data, requestedUser);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const userRole = req.user?.role;
 
   // Check if stage changed (lead moved)

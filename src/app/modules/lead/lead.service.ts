@@ -658,11 +658,13 @@ const updateLead = async (
   }
 
   // Check for overdue activities and mark them in history
-  if (existingLead.activities && Array.isArray(existingLead.activities)) {
+  // IMPORTANT: Check payload.activities (new data) not existingLead.activities (old data)
+  const activitiesToCheck = payload.activities || existingLead.activities;
+  if (activitiesToCheck && Array.isArray(activitiesToCheck)) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    existingLead.activities.forEach((activity: any) => {
+    activitiesToCheck.forEach((activity: any) => {
       // Check if activity is overdue and not marked as overdue yet
       if (!activity.completed && !activity.markedAsOverdue) {
         const activityDate = new Date(activity.date || activity.meetingDate);
@@ -691,9 +693,11 @@ const updateLead = async (
       }
     });
     
-    // Update the activities array with markedAsOverdue flag if any were marked
-    if (historyEntries.some((entry: any) => entry.action === 'activity_overdue')) {
-      payload.activities = existingLead.activities;
+    // If we checked payload.activities and marked some as overdue, keep the payload
+    // Don't replace with existingLead.activities as that would lose our updates!
+    if (payload.activities && historyEntries.some((entry: any) => entry.action === 'activity_overdue')) {
+      // Payload activities already have the markedAsOverdue flag set above
+      // No need to replace, just keep payload.activities as is
     }
   }
 
@@ -733,11 +737,11 @@ const updateLead = async (
   // Perform the update in the database
   let result;
   if (historyEntries.length > 0) {
-    // Use $push operator to add history entries
+    // Use $set operator for payload and $push operator for history entries
     result = await Lead.findOneAndUpdate(
       { _id: id }, 
       {
-        ...payload,
+        $set: payload,
         $push: { history: { $each: historyEntries } }
       } as any,
       { new: true }
@@ -1069,6 +1073,14 @@ const getAllActivities = async (query: Record<string, unknown>): Promise<IGeneri
   const allActivities: any[] = [];
   
   leads.forEach(lead => {
+    // Skip leads in "Lost" stage - don't show their activities
+    if (lead.stage && typeof lead.stage === 'object' && 'title' in lead.stage) {
+      const stageTitle = (lead.stage as any).title || '';
+      if (stageTitle.toLowerCase().includes('lost')) {
+        return; // Skip this lead's activities
+      }
+    }
+    
     if (lead.activities && lead.activities.length > 0) {
       // Create a map of activity_added history entries by matching description/date
       const activityAddedHistoryMap = new Map();
