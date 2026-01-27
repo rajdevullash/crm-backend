@@ -1,5 +1,5 @@
 import { Schema, model } from 'mongoose';
-import { IResource, WorkMode, JobType, JobStatus } from './resource.interface';
+import { IResource} from './resource.interface';
 
 const addressSchema = new Schema(
   {
@@ -32,7 +32,7 @@ const emergencyContactSchema = new Schema(
 
 const jobHistorySchema = new Schema(
   {
-    workMode: { type: String, enum: ['on-site', 'remote'], required: true },
+    workMode: { type: String, enum: ['on-site', 'remote', 'hybrid'], required: true },
     jobType: { type: String, enum: ['permanent', 'internship'], required: true },
     jobStatus: { type: String, enum: ['confirmed', 'probation', 'resigned'], required: true },
     position: { type: String, required: true, trim: true },
@@ -114,7 +114,7 @@ const resourceSchema = new Schema<IResource>(
     
     // Job Information
     joiningDate: { type: Date, required: true },
-    workMode: { type: String, enum: ['on-site', 'remote'], required: true },
+    workMode: { type: String, enum: ['on-site', 'remote', 'hybrid'], required: true },
     jobType: { type: String, enum: ['permanent', 'internship'], required: true },
     jobStatus: { type: String, enum: ['confirmed', 'probation', 'resigned'], required: true, default: 'probation' },
     position: { type: String, required: true, trim: true },

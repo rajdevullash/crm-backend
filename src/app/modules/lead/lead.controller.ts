@@ -459,7 +459,8 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
                                 requestedUser;
         
         // Create clean activity object without the temporary 'id' field
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
+
         const { id: _tempId, ...activityUpdateData } = updatedActivity;
         
         // Add custom activity attachment URL if uploaded (for updates)
@@ -546,7 +547,6 @@ const updateLead = catchAsync(async (req: Request, res: Response) => {
   };
 
   const result = await LeadService.updateLead(id, data, requestedUser);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const userRole = req.user?.role;
 
   // Check if stage changed (lead moved)

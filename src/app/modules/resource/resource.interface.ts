@@ -1,4 +1,4 @@
-export type WorkMode = 'on-site' | 'remote';
+export type WorkMode = 'on-site' | 'remote' | 'hybrid';
 export type JobType = 'permanent' | 'internship';
 export type JobStatus = 'confirmed' | 'probation' | 'resigned';
 

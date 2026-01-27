@@ -35,7 +35,7 @@ const createResourceZodSchema = z.object({
     
     // Job Information
     joiningDate: z.string({ required_error: 'Joining date is required' }).transform((str) => new Date(str)),
-    workMode: z.enum(['on-site', 'remote'], { required_error: 'Work mode is required' }),
+    workMode: z.enum(['on-site', 'remote', 'hybrid'], { required_error: 'Work mode is required' }),
     jobType: z.enum(['permanent', 'internship'], { required_error: 'Job type is required' }),
     jobStatus: z.enum(['confirmed', 'probation', 'resigned']).default('probation'),
     position: z.string({ required_error: 'Position is required' }),
@@ -68,7 +68,7 @@ const updateResourceZodSchema = z.object({
     
     // Job Information
     joiningDate: z.string().transform((str) => new Date(str)).optional(),
-    workMode: z.enum(['on-site', 'remote']).optional(),
+    workMode: z.enum(['on-site', 'remote', 'hybrid']).optional(),
     jobType: z.enum(['permanent', 'internship']).optional(),
     jobStatus: z.enum(['confirmed', 'probation', 'resigned']).optional(),
     position: z.string().optional(),
